@@ -241,11 +241,17 @@ async def admin_files(request: Request):
 
 @app.get('/debug')
 async def debug():
-    return {'_LOGIN_defined': '_LOGIN' in dir() if False else len(str(_LOGIN)),
-            '_ADMIN_defined': len(str(_ADMIN)),
-            '_USER_defined': len(str(_USER)),
+    h = _hash('test123')
+    v = _verify('test123', h)
+    v2 = _verify('wrong', h)
+    u = await db_fetch('SELECT username, id FROM users LIMIT 5')
+    return {'_LOGIN_len': len(str(_LOGIN)),
             'use_pg': use_pg,
-            'PORT': PORT}
+            'PORT': PORT,
+            'hash_test': f'{h[:20]}...',
+            'verify_ok': v,
+            'verify_fail': not v2,
+            'users': [dict(r) for r in u]}
 
 @app.exception_handler(Exception)
 async def exc_handler(request: Request, exc: Exception):
