@@ -28,9 +28,13 @@ async def init_db():
         import asyncpg
         db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
         async with db_pool.acquire() as conn:
-            await conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id SERIAL PRIMARY KEY,k VARCHAR(255) UNIQUE NOT NULL,v TEXT NOT NULL,t TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
-
-            await conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id SERIAL PRIMARY KEY,k VARCHAR(255) UNIQUE NOT NULL,v TEXT NOT NULL,t TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+            await conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id SERIAL PRIMARY KEY,k VARCHAR(255) UNIQUE NOT NULL,v TEXT NOT NULL,t TIMESTAMP DEFAULT CURRENT_TIMESTAMP,read BOOLEAN NOT NULL DEFAULT FALSE)')
+            # clouddata column migration
+            try:
+                cdcols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name=$1", 'clouddata')
+                if 'read' not in [c['column_name'] for c in cdcols]:
+                    await conn.execute("ALTER TABLE clouddata ADD COLUMN read BOOLEAN NOT NULL DEFAULT FALSE")
+            except: pass
 
             await conn.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR(64) UNIQUE NOT NULL, password_hash VARCHAR(128) NOT NULL, display_name VARCHAR(128), created_at TIMESTAMP NOT NULL DEFAULT NOW(), role VARCHAR(16) NOT NULL DEFAULT \'user\')')
             # 迁移：给旧 users 表添加 role 列
@@ -51,6 +55,10 @@ async def init_db():
                 await conn.execute('CREATE TABLE IF NOT EXISTS files (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), filename VARCHAR(255) NOT NULL, original_name VARCHAR(255) NOT NULL, size BIGINT NOT NULL, mime_type VARCHAR(128), upload_time TIMESTAMP NOT NULL DEFAULT NOW(), file_path VARCHAR(512) NOT NULL)')
     else:
         conn = sqlite3.connect('/data/files.db')
+        conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id INTEGER PRIMARY KEY AUTOINCREMENT,k TEXT UNIQUE NOT NULL,v TEXT NOT NULL,t TEXT NOT NULL,read INTEGER NOT NULL DEFAULT 0)')
+        try: conn.execute('ALTER TABLE clouddata ADD COLUMN read INTEGER NOT NULL DEFAULT 0')
+        except: pass
+
         conn.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, display_name TEXT, created_at TEXT NOT NULL, role TEXT NOT NULL DEFAULT \'user\')')
         # 迁移：给旧 users 表添加 role 列
         ucur = conn.execute("PRAGMA table_info(users)")
@@ -68,7 +76,6 @@ async def init_db():
                 aid = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()[0]
             else: aid = admin[0]
             conn.execute('UPDATE files SET user_id = ? WHERE user_id IS NULL', (aid,))
-        conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id INTEGER PRIMARY KEY AUTOINCREMENT,k TEXT UNIQUE NOT NULL,v TEXT NOT NULL,t TEXT NOT NULL)')
         if not cols:
             conn.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL, mime_type TEXT, upload_time TEXT NOT NULL, file_path TEXT NOT NULL)')
         conn.commit(); conn.close()
@@ -229,14 +236,107 @@ async def delete_file(request: Request, fid: int):
     return {'message': 'ok'}
 
 
+
+@app.post('/clouddata')
+async def script_cd_upsert(request: Request):
+    uid = _require(request)
+    b = await request.json(); k = b.get('key','').strip(); v = b.get('value','').strip()
+    if not k or not v: raise HTTPException(400)
+    if use_pg:
+        await db_execute('INSERT INTO clouddata(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', k, v)
+    else:
+        await db_execute('INSERT OR REPLACE INTO clouddata(k,v) VALUES(?,?)', k, v)
+    return {'ok': True, 'key': k, 'value': v}
+
+@app.get('/clouddata')
+async def script_cd_list(request: Request, key: str = None):
+    _require(request)
+    if key:
+        if use_pg:
+            r = await db_execute('SELECT k,v,t,read FROM clouddata WHERE k=$1', key)
+            return {'key':r['k'],'value':r['v'],'time':str(r['t']),'read':r['read']} if r else {'error':'not found'}
+        else:
+            rows = await db_execute('SELECT k,v,t,read FROM clouddata WHERE k=?', key)
+            return {'key':rows[0]['k'],'value':rows[0]['v'],'time':rows[0]['t'],'read':rows[0]['read']} if rows else {'error':'not found'}
+    if use_pg:
+        r = await db_execute('SELECT k,v,t,read FROM clouddata ORDER BY id DESC')
+    else:
+        r = await db_execute('SELECT k,v,t,read FROM clouddata ORDER BY id DESC')
+    return [{'key':x['k'],'value':x['v'],'time':str(x['t']) if x['t'] else '','read':x['read']} for x in r]
+
+@app.get('/clouddata/{key}')
+async def script_cd_get(key: str, request: Request):
+    _require(request)
+    if use_pg:
+        r = await db_execute('SELECT k,v,t,read FROM clouddata WHERE k=$1', key)
+    else:
+        r = await db_execute('SELECT k,v,t,read FROM clouddata WHERE k=?', key)
+    if not r: raise HTTPException(404, 'key not found')
+    return {'key':r['k'],'value':r['v'],'time':str(r['t']),'read':r['read']}
+
+@app.delete('/clouddata/{key}')
+async def script_cd_delete(key: str, request: Request):
+    _require(request)
+    if use_pg:
+        await db_execute('DELETE FROM clouddata WHERE k=$1', key)
+    else:
+        await db_execute('DELETE FROM clouddata WHERE k=?', key)
+    return {'ok': True, 'key': key}
+
+@app.get('/clouddata/export/{mode}')
+async def script_cd_export(mode: str, request: Request):
+    _require(request)
+    if mode == 'all':
+        r = await db_execute('SELECT k,v,t,read FROM clouddata ORDER BY id')
+    elif mode == 'read':
+        sql = 'SELECT k,v,t,read FROM clouddata WHERE read=true ORDER BY id' if use_pg else 'SELECT k,v,t,read FROM clouddata WHERE read=1 ORDER BY id'
+        r = await db_execute(sql)
+    elif mode == 'unread':
+        sql = 'SELECT k,v,t,read FROM clouddata WHERE read=false ORDER BY id' if use_pg else 'SELECT k,v,t,read FROM clouddata WHERE read=0 ORDER BY id'
+        r = await db_execute(sql)
+    else:
+        raise HTTPException(400, 'mode must be all/read/unread')
+    import io, csv
+    buf = io.StringIO(); w = csv.writer(buf)
+    w.writerow(['Key','Value','Time','Read'])
+    for x in r:
+        t = str(x['t']) if x['t'] else ''
+        red = 'Yes' if x['read'] else 'No'
+        w.writerow([x['k'], x['v'], t, red])
+    csv_content = buf.getvalue(); buf.close()
+    from datetime import datetime
+    fname = 'clouddata_%s_%s.csv' % (mode, datetime.utcnow().strftime('%Y%m%d_%H%M%S'))
+    return Response(content=csv_content, media_type='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=' + fname})
+
+@app.post('/clouddata/mark/{key}')
+async def script_cd_mark(key: str, request: Request, read: bool = True):
+    _require(request)
+    if use_pg:
+        await db_execute('UPDATE clouddata SET read=$1 WHERE k=$2', read, key)
+    else:
+        await db_execute('UPDATE clouddata SET read=? WHERE k=?', 1 if read else 0, key)
+    return {'ok': True, 'key': key, 'read': read}
+
+@app.post('/clouddata/mark/id/{cid}')
+async def script_cd_mark_id(cid: int, request: Request, read: bool = True):
+    _require(request)
+    if use_pg:
+        await db_execute('UPDATE clouddata SET read=$1 WHERE id=$2', read, cid)
+    else:
+        await db_execute('UPDATE clouddata SET read=? WHERE id=?', 1 if read else 0, cid)
+    return {'ok': True, 'id': cid, 'read': read}
+
+
+
 @app.get('/admin/clouddata')
 async def clouddata_list(request: Request):
     uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
     if use_pg:
-        return await db_fetch("SELECT id,k,v,to_char(t,'YYYY-MM-DD HH24:MI') AS t FROM clouddata ORDER BY id DESC")
+        return await db_execute("SELECT id,k,v,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata ORDER BY id DESC")
     else:
-        return await db_fetch('SELECT id,k,v,t FROM clouddata ORDER BY id DESC')
+        return await db_execute('SELECT id,k,v,t,read FROM clouddata ORDER BY id DESC')
 
 @app.post('/admin/clouddata/add')
 async def clouddata_add(request: Request):
@@ -259,7 +359,6 @@ async def clouddata_del(cid: int, request: Request):
     else:
         await db_execute('DELETE FROM clouddata WHERE id=?', cid)
     return {'ok': True}
-
 
 @app.get('/admin/stats')
 async def admin_stats(request: Request):
