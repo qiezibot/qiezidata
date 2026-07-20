@@ -245,9 +245,9 @@ async def clouddata_add(request: Request):
     b = await request.json(); k = b.get('key','').strip(); v = b.get('value','').strip()
     if not k or not v: raise HTTPException(400)
     if use_pg:
-        await db_exec('INSERT INTO clouddata(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', k, v)
+        await db_execute('INSERT INTO clouddata(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', k, v)
     else:
-        await db_exec('INSERT OR REPLACE INTO clouddata(k,v) VALUES(?,?)', k, v)
+        await db_execute('INSERT OR REPLACE INTO clouddata(k,v) VALUES(?,?)', k, v)
     return {'ok': True}
 
 @app.delete('/admin/clouddata/{cid}')
@@ -255,42 +255,11 @@ async def clouddata_del(cid: int, request: Request):
     uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
     if use_pg:
-        await db_exec('DELETE FROM clouddata WHERE id=$1', cid)
+        await db_execute('DELETE FROM clouddata WHERE id=$1', cid)
     else:
-        await db_exec('DELETE FROM clouddata WHERE id=?', cid)
+        await db_execute('DELETE FROM clouddata WHERE id=?', cid)
     return {'ok': True}
 
-
-@app.get('/admin/clouddata')
-async def clouddata_list(request: Request):
-    uid = _require(request); user = await _user(uid)
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
-    if use_pg:
-        return await db_fetch("SELECT id,k,v,to_char(t,'YYYY-MM-DD HH24:MI') AS t FROM clouddata ORDER BY id DESC")
-    else:
-        return await db_fetch('SELECT id,k,v,t FROM clouddata ORDER BY id DESC')
-
-@app.post('/admin/clouddata/add')
-async def clouddata_add(request: Request):
-    uid = _require(request); user = await _user(uid)
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
-    b = await request.json(); k = b.get('key','').strip(); v = b.get('value','').strip()
-    if not k or not v: raise HTTPException(400)
-    if use_pg:
-        await db_exec('INSERT INTO clouddata(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', k, v)
-    else:
-        await db_exec('INSERT OR REPLACE INTO clouddata(k,v) VALUES(?,?)', k, v)
-    return {'ok': True}
-
-@app.delete('/admin/clouddata/{cid}')
-async def clouddata_del(cid: int, request: Request):
-    uid = _require(request); user = await _user(uid)
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
-    if use_pg:
-        await db_exec('DELETE FROM clouddata WHERE id=$1', cid)
-    else:
-        await db_exec('DELETE FROM clouddata WHERE id=?', cid)
-    return {'ok': True}
 
 @app.get('/admin/stats')
 async def admin_stats(request: Request):
