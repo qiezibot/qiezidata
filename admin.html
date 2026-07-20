@@ -1,0 +1,67 @@
+﻿<!DOCTYPE html><html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据 - 管理后台</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;min-height:100vh;color:#333}
+.header{background:#fff;border-bottom:1px solid #e8e8e8;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.header .logo{font-size:20px;font-weight:700;color:#667eea;text-decoration:none}
+.header .user-area{display:flex;align-items:center;gap:16px;font-size:14px;color:#666}
+.header .user-area a{color:#999;text-decoration:none;cursor:pointer}
+.layout{display:flex;min-height:calc(100vh-56px)}
+.sidebar{width:200px;background:#fff;border-right:1px solid #e8e8e8;padding:16px 0}
+.sidebar .nav-item{padding:12px 24px;cursor:pointer;display:flex;align-items:center;gap:10px;color:#555;font-size:14px;border-left:3px solid transparent}
+.sidebar .nav-item.active{background:#f0f2ff;color:#667eea;border-left-color:#667eea;font-weight:500}
+.sidebar .nav-item:hover{background:#f5f7ff;color:#667eea}
+.main{flex:1;padding:24px;max-width:1200px}
+.card{background:#fff;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.card h2{font-size:18px;margin-bottom:16px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+.stat-card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);text-align:center}
+.stat-card .num{font-size:32px;font-weight:700;color:#667eea}.stat-card .label{font-size:13px;color:#999}
+.tab-page{display:none}.tab-page.active{display:block}
+.upload-zone{border:2px dashed #ccc;border-radius:12px;padding:40px;text-align:center;cursor:pointer}
+.upload-zone:hover{border-color:#667eea;background:#f8f9ff}
+progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
+.user-table{width:100%;border-collapse:collapse;font-size:14px}
+.user-table th{text-align:left;padding:10px 12px;border-bottom:2px solid #eee;color:#666}
+.user-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0}
+.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;opacity:0;z-index:999}
+.toast.show{opacity:1}.toast.success{background:#27ae60}.toast.error{background:#e74c3c}
+.file-list{list-style:none}.file-item{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f0f0}
+.file-info{flex:1}.file-name{font-weight:500}.file-meta{font-size:12px;color:#999}
+.file-actions{display:flex;gap:6px}
+.file-actions a,.file-actions button{padding:5px 10px;font-size:12px;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#555;background:#fff;cursor:pointer}
+.file-actions .del-btn:hover{background:#ffeaea;border-color:#e74c3c;color:#e74c3c}
+</style></head><body>
+<div class="header"><a href="/" class="logo">🍆 茄子数据</a><div class="user-area"><span>👤 __USERNAME__</span><span class="badge" style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;background:#e8f4fd;color:#2196f3">管理员</span><a href="/logout">退出</a></div></div>
+<div class="layout"><div class="sidebar">
+<div class="nav-item active" onclick="switchPage('dashboard',this)">📊 概览</div>
+<div class="nav-item" onclick="switchPage('files',this)">📁 文件管理</div>
+<div class="nav-item" onclick="switchPage('upload',this)">📤 上传文件</div>
+<div class="nav-item" onclick="switchPage('users',this)">👥 用户管理</div>
+</div><div class="main">
+<div class="tab-page active" id="page-dashboard">
+<div class="stats"><div class="stat-card"><div class="num" id="statUsers">-</div><div class="label">用户总数</div></div>
+<div class="stat-card"><div class="num" id="statFiles">-</div><div class="label">文件总数</div></div>
+<div class="stat-card"><div class="num" id="statSize">-</div><div class="label">总容量</div></div>
+<div class="stat-card"><div class="num" id="statAdmin">-</div><div class="label">管理员</div></div></div></div>
+<div class="tab-page" id="page-files"><div class="card"><h2>📋 所有用户文件</h2><div id="fileList"><p>暂无文件</p></div></div></div>
+<div class="tab-page" id="page-upload"><div class="card"><h2>📤 上传文件</h2>
+<div class="upload-zone" id="dropZone"><p style="font-size:48px;margin-bottom:10px">📁</p><p>拖拽文件到此处，或点击选择文件</p><input type="file" id="fileInput" style="display:none"></div>
+<progress id="uploadProgress" max="100" value="0"></progress>
+<div style="margin-top:16px"><h3>我的文件</h3><div id="myFileList"><p>暂无文件</p></div></div></div></div>
+<div class="tab-page" id="page-users"><div class="card"><h2>👥 用户管理</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名</th><th>角色</th><th>注册时间</th></tr></thead><tbody id="userTableBody"></tbody></table></div></div>
+</div></div>
+<div id="toast" class="toast"></div>
+<script>
+function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='users')loadUsers();if(id==='upload')loadMyFiles()}
+document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});
+document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
+async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();var r=await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve(JSON.parse(xhr.responseText));else if(xhr.status===401)window.location.href='/';else reject(new Error(xhr.statusText))};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('上传成功','success');loadMyFiles()}catch(e){showToast('上传失败','error')}document.getElementById('uploadProgress').style.display='none'}
+async function loadDashboard(){try{var r=await fetch('/admin/stats',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();document.getElementById('statUsers').textContent=d.users;document.getElementById('statFiles').textContent=d.files;document.getElementById('statSize').textContent=d.size_display;document.getElementById('statAdmin').textContent=d.admins}catch(e){}}
+async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();var el=document.getElementById('fileList');if(!files.length){el.innerHTML='<p>暂无文件</p>';return}
+el.innerHTML='<ul>'+files.map(function(f){return '<li class="file-item"><div class="file-info"><div class="file-name">'+f.original_name+'</div><div class="file-meta">'+f.size+'B · 用户:'+f.owner+'</div></div><div class="file-actions"><a href="/download/'+f.id+'" download>⬇️</a></div></li>'}).join('')+'</ul>'}catch(e){}}
+async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();document.getElementById('userTableBody').innerHTML=users.map(function(u){return '<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td><span style="background:'+(u.role==='admin'?'#e8f4fd;color:#2196f3':'#f0f0f0;color:#666')+';padding:2px 8px;border-radius:4px;font-size:12px">'+u.role+'</span></td><td>'+u.created_at+'</td></tr>'}).join('')}catch(e){}}
+async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();var el=document.getElementById('myFileList');if(!files.length){el.innerHTML='<p>暂无文件</p>';return}
+el.innerHTML='<ul>'+files.map(function(f){return '<li class="file-item"><div class="file-info"><div class="file-name">'+f.original_name+'</div><div class="file-meta">'+f.size+'B</div></div><div class="file-actions"><a href="/read/'+f.id+'" target="_blank">📖</a><a href="/download/'+f.id+'" download>⬇️</a></div></li>'}).join('')+'</ul>'}catch(e){}}
+function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}
+loadDashboard();
+</script></body></html>

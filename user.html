@@ -1,0 +1,39 @@
+<!DOCTYPE html><html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据 - 我的文件</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5}
+.header{background:#fff;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e8e8e8}
+.header .logo{font-size:20px;font-weight:700;color:#667eea;text-decoration:none}.header .user-area{display:flex;align-items:center;gap:16px;font-size:14px;color:#666}
+.header .user-area a{color:#999;text-decoration:none;cursor:pointer}
+.container{max-width:900px;margin:24px auto;padding:0 20px}
+.card{background:#fff;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.card h2{font-size:18px;margin-bottom:16px}
+.upload-zone{border:2px dashed #ccc;border-radius:12px;padding:40px;text-align:center;cursor:pointer}
+.upload-zone:hover{border-color:#667eea;background:#f8f9ff}.upload-zone .icon{font-size:48px}
+.file-list{list-style:none}.file-item{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f0f0}
+.file-info{flex:1}.file-name{font-weight:500}.file-meta{font-size:12px;color:#999}
+.file-actions{display:flex;gap:6px}
+.file-actions a,.file-actions button{padding:5px 10px;font-size:12px;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#555;background:#fff;cursor:pointer}
+.file-actions .del-btn:hover{background:#ffeaea;border-color:#e74c3c;color:#e74c3c}
+progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
+.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;opacity:0;z-index:999}
+.toast.show{opacity:1}.toast.success{background:#27ae60}.toast.error{background:#e74c3c}
+</style></head><body>
+<div class="header"><a href="/" class="logo">🍆 茄子数据</a><div class="user-area"><span>👤 __USERNAME__</span><a href="/logout">退出</a></div></div>
+<div class="container">
+<div class="card"><h2>📤 上传文件</h2>
+<div class="upload-zone" id="dropZone"><div class="icon">📁</div><p>拖拽文件或点击选择</p><input type="file" id="fileInput" style="display:none"></div>
+<progress id="uploadProgress" max="100" value="0"></progress>
+</div>
+<div class="card"><h2>📋 我的文件</h2><div id="fileList"><p>暂无文件</p></div></div>
+</div>
+<div id="toast" class="toast"></div>
+<script>
+document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});
+document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
+async function uploadFile(file){var fd=new FormData();fd.append('file',file);var p=document.getElementById('uploadProgress');p.style.display='block';try{var xhr=new XMLHttpRequest();var r=await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve(JSON.parse(xhr.responseText));else if(xhr.status===401)window.location.href='/';else reject(new Error(xhr.statusText))};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('上传成功','success');loadFiles()}catch(e){showToast('上传失败','error')}p.style.display='none'}
+async function loadFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();var el=document.getElementById('fileList');if(!files.length){el.innerHTML='<p>暂无文件</p>';return}
+el.innerHTML='<ul>'+files.map(function(f){return '<li class="file-item"><div class="file-info"><div class="file-name">'+f.original_name+'</div><div class="file-meta">'+f.size+'B</div></div><div class="file-actions"><a href="/read/'+f.id+'" target="_blank">📖</a><a href="/download/'+f.id+'" download>⬇️</a><button class="del-btn" onclick="delFile('+f.id+')">🗑️</button></div></li>'}).join('')+'</ul>'}catch(e){}}
+async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
+function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}
+loadFiles();
+</script></body></html>
