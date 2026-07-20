@@ -143,29 +143,28 @@ def verify_password(password: str, stored: str) -> bool:
     return h == hashlib.sha256((salt + password).encode()).hexdigest()
 
 def make_session_token(user_id: int) -> str:
-    raw = f'{user_id}:{SECRET_KEY}:{secrets.token_hex(8)}'
-    return f'{user_id}:' + hashlib.sha256(raw.encode()).hexdigest()
+    """Encode user_id into a self-validating cookie token (no server-side storage needed)"""
+    raw = f'{user_id}:{SECRET_KEY}'
+    sig = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    return f'{user_id}:{sig}'
 
 def parse_session_token(token: str):
+    """Validate token and return user_id, or None if invalid"""
     try:
         parts = token.split(':')
         if len(parts) != 2: return None
         user_id = int(parts[0])
-        raw = f'{user_id}:{SECRET_KEY}:' + token  # reconstruct check
-        # simplified: just check format
-        return user_id
+        raw = f'{user_id}:{SECRET_KEY}'
+        expected_sig = hashlib.sha256(raw.encode()).hexdigest()[:16]
+        if parts[1] == expected_sig:
+            return user_id
+        return None
     except:
         return None
 
-# In-memory session store (survives between requests within same process)
-_session_store = {}  # token -> user_id
-
 def check_auth(request: Request):
     token = request.cookies.get(AUTH_COOKIE_NAME, '')
-    uid = _session_store.get(token)
-    if uid is not None:
-        return uid
-    return None
+    return parse_session_token(token)
 
 def require_auth(request: Request):
     uid = check_auth(request)
@@ -551,7 +550,6 @@ async def login(username: str = Form(...), password: str = Form(...)):
         return RedirectResponse(url='/?error=1', status_code=302)
     
     token = make_session_token(row['id'])
-    _session_store[token] = row['id']
     
     resp = RedirectResponse(url='/', status_code=302)
     resp.set_cookie(key=AUTH_COOKIE_NAME, value=token, httponly=True, max_age=86400*7, samesite='lax')
