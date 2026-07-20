@@ -797,13 +797,16 @@ async def cdprojects_stats(request: Request, pid: int):
     uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
     if use_pg:
-        total = await db_fetchval("SELECT COUNT(*) FROM clouddata WHERE project_id=$1", pid)
-        no_read = await db_fetchval("SELECT COUNT(*) FROM clouddata WHERE project_id=$1 AND read=FALSE", pid)
-        read_cnt = await db_fetchval("SELECT COUNT(*) FROM clouddata WHERE project_id=$1 AND read=TRUE", pid)
+        async with db_pool.acquire() as conn:
+            total = await conn.fetchval("SELECT COUNT(*)::int FROM clouddata WHERE project_id=$1", pid)
+            no_read = await conn.fetchval("SELECT COUNT(*)::int FROM clouddata WHERE project_id=$1 AND read=FALSE", pid)
+            read_cnt = await conn.fetchval("SELECT COUNT(*)::int FROM clouddata WHERE project_id=$1 AND read=TRUE", pid)
     else:
-        total = await db_fetchval("SELECT COUNT(*) FROM clouddata WHERE project_id=?", pid)
-        no_read = await db_fetchval("SELECT COUNT(*) FROM clouddata WHERE project_id=? AND read=0", pid)
-        read_cnt = await db_fetchval("SELECT COUNT(*) FROM clouddata WHERE project_id=? AND read=1", pid)
+        conn = sqlite3.connect('/data/files.db')
+        total = conn.execute("SELECT COUNT(*) FROM clouddata WHERE project_id=?", (pid,)).fetchone()[0]
+        no_read = conn.execute("SELECT COUNT(*) FROM clouddata WHERE project_id=? AND read=0", (pid,)).fetchone()[0]
+        read_cnt = conn.execute("SELECT COUNT(*) FROM clouddata WHERE project_id=? AND read=1", (pid,)).fetchone()[0]
+        conn.close()
     return {'total':total, 'noRead':no_read, 'read':read_cnt}
 
 @app.get('/admin/cddata/{pid}')
@@ -821,11 +824,16 @@ async def cddata_list(request: Request, pid: int):
     if search: where += f" AND name LIKE '%{search}%'"
 
     if use_pg:
-        total = await db_fetchval(f"SELECT COUNT(*) FROM clouddata {where}")
-        r = await db_fetch(f"SELECT id,k,v,name,md5,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata {where} ORDER BY id DESC LIMIT {limit} OFFSET {offset}")
+        async with db_pool.acquire() as conn:
+            total = await conn.fetchval(f"SELECT COUNT(*)::int FROM clouddata {where}")
+            r = await conn.fetch(f"SELECT id,k,v,name,md5,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata {where} ORDER BY id DESC LIMIT {limit} OFFSET {offset}")
+            r = [dict(row) for row in r]
     else:
-        total = await db_fetchval(f"SELECT COUNT(*) FROM clouddata {where}")
-        r = await db_fetch(f"SELECT id,k,v,name,md5,t,read FROM clouddata {where} ORDER BY id DESC LIMIT {limit} OFFSET {offset}")
+        conn = sqlite3.connect('/data/files.db')
+        total = conn.execute(f"SELECT COUNT(*) FROM clouddata {where}").fetchone()[0]
+        r = conn.execute(f"SELECT id,k,v,name,md5,t,read FROM clouddata {where} ORDER BY id DESC LIMIT {limit} OFFSET {offset}").fetchall()
+        r = [dict(zip([desc[0] for desc in conn.execute(f'SELECT id,k,v,name,md5,t,read FROM clouddata {where} LIMIT 1').description], row)) for row in r]
+        conn.close()
     return {'items': r, 'total': total}
 
 @app.post('/admin/cddata/state/{cid}')
@@ -833,12 +841,15 @@ async def cddata_toggle_state(request: Request, cid: int):
     uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
     if use_pg:
-        await db_execute("UPDATE clouddata SET read=NOT read WHERE id=$1", cid)
-        r = await db_fetch("SELECT read FROM clouddata WHERE id=$1", cid)
+        async with db_pool.acquire() as conn:
+            await conn.execute("UPDATE clouddata SET read=NOT read WHERE id=$1", cid)
+            val = await conn.fetchval("SELECT read FROM clouddata WHERE id=$1", cid)
     else:
-        await db_execute("UPDATE clouddata SET read = CASE WHEN read=0 THEN 1 ELSE 0 END WHERE id=?", cid)
-        r = await db_fetch("SELECT read FROM clouddata WHERE id=?", cid)
-    return {'ok':True, 'read': bool(r[0]['read']) if r else False}
+        conn = sqlite3.connect('/data/files.db')
+        conn.execute("UPDATE clouddata SET read = CASE WHEN read=0 THEN 1 ELSE 0 END WHERE id=?", (cid,))
+        val = conn.execute("SELECT read FROM clouddata WHERE id=?", (cid,)).fetchone()[0]
+        conn.commit(); conn.close()
+    return {'ok':True, 'read': bool(val)}
 
 @app.delete('/admin/cddata/{cid}')
 async def cddata_delete(request: Request, cid: int):
@@ -869,9 +880,14 @@ async def cddata_export(request: Request, pid: int, mode: str):
     elif mode == 'unread': where += " AND read=FALSE" if use_pg else " AND read=0"
     
     if use_pg:
-        r = await db_fetch(f"SELECT id,k,v,name,md5,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata {where} ORDER BY id DESC")
+        async with db_pool.acquire() as conn:
+            raw = await conn.fetch(f"SELECT id,k,v,name,md5,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata {where} ORDER BY id DESC")
+            r = [dict(row) for row in raw]
     else:
-        r = await db_fetch(f"SELECT id,k,v,name,md5,t,read FROM clouddata {where} ORDER BY id DESC")
+        conn = sqlite3.connect('/data/files.db')
+        raw = conn.execute(f"SELECT id,k,v,name,md5,t,read FROM clouddata {where} ORDER BY id DESC").fetchall()
+        r = [dict(zip([desc[0] for desc in conn.execute(f'SELECT id,k,v,name,md5,t,read FROM clouddata {where} LIMIT 1').description], row)) for row in raw]
+        conn.close()
     
     import csv, io
     out = io.StringIO()
@@ -887,9 +903,14 @@ async def cddata_download(request: Request, cid: int):
     uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
     if use_pg:
-        r = await db_fetch("SELECT k,v FROM clouddata WHERE id=$1", cid)
+        async with db_pool.acquire() as conn:
+            raw = await conn.fetchrow("SELECT k,v FROM clouddata WHERE id=$1", cid)
+            r = [dict(raw)] if raw else []
     else:
-        r = await db_fetch("SELECT k,v FROM clouddata WHERE id=?", cid)
+        conn = sqlite3.connect('/data/files.db')
+        raw = conn.execute("SELECT k,v FROM clouddata WHERE id=?", (cid,)).fetchone()
+        r = [{'k':raw[0],'v':raw[1]}] if raw else []
+        conn.close()
     if not r: raise HTTPException(status_code=404)
     data = r[0]['v'].encode('utf-8')
     return Response(content=data, media_type='text/plain', headers={'Content-Disposition': f'attachment; filename={r[0]["k"]}.txt'})
