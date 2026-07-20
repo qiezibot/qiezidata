@@ -7,7 +7,7 @@ import os, uuid, mimetypes, sqlite3, secrets, hashlib
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
-from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse, Response, Response
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 UPLOAD_DIR = os.environ.get('UPLOAD_DIR', '/data/uploads')
@@ -553,6 +553,8 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 </div></div>
 </div>
 </div></div>
+</div>
+</div></div>
 <div id="toast" class="toast"></div>
 <script>
 function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='upload')loadMyFiles();if(id==='users')loadUsers();if(id==='clouddata')loadCloudData()}
@@ -564,14 +566,12 @@ async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'in
 async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">删除</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
 async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
 
-async function exportCD(mode) {
-  try{var r=await fetch('/clouddata/export/'+mode,{credentials:'include'});
-  if(r.status===401){window.location.href='/';return}
-  var blob=await r.blob();var a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='clouddata_'+mode+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click()
-  }catch(e){showToast('导出失败','error')}
-}
-async function loadCloudData(){try{var r=await fetch('/admin/clouddata',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();if(!d.length){document.getElementById('cdList').innerHTML='<p style="color:#999;text-align:center;padding:20px">暂无数据</p>';return}var h='<table class="user-table"><thead><tr><th>Key</th><th>Value</th><th>时间</th><th>状态</th><th>操作</th></tr></thead><tbody>';for(var i=0;i<d.length;i++){var rs=d[i].read?'已读':'未读';var rc=rs=='已读'?'#27ae60':'#e67e22';h+='<tr><td>'+d[i].k+'</td><td>'+d[i].v+'</td><td>'+(d[i].t||'-')+'</td><td><span style="color:'+rc+';font-weight:500">'+rs+'</span></td><td><button onclick="markCD('+d[i].id+','+(!d[i].read)+')" style="padding:2px 8px;border:1px solid #2980b9;border-radius:4px;color:#2980b9;background:#fff;cursor:pointer;font-size:12px">'+(d[i].read?'标未读':'标已读')+'</button> <button onclick="delCloudData('+d[i].id+')" style="padding:2px 8px;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;background:#fff;cursor:pointer;font-size:12px">删除</button></td></tr>'}h+='</tbody></table>';document.getElementById('cdList').innerHTML=h}catch(e){}}
+async function exportCD(mode){try{var r=await fetch('/clouddata/export/'+mode,{credentials:'include'});if(r.status===401){window.location.href='/';return}var blob=await r.blob();var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clouddata_'+mode+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click()}catch(e){showToast('导出失败','error')}}
+
+async function exportCD(mode){try{var r=await fetch('/clouddata/export/'+mode,{credentials:'include'});if(r.status===401){window.location.href='/';return}var blob=await r.blob();var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='clouddata_'+mode+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click()}catch(e){showToast('导出失败','error')}}
+async function loadCloudData(){try{var r=await fetch('/admin/clouddata',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();if(!d.length){document.getElementById('cdList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无数据</p>';return}var h='<table class=\"user-table\"><thead><tr><th>Key</th><th>Value</th><th>时间</th><th>状态</th><th>操作</th></tr></thead><tbody>';for(var i=0;i<d.length;i++){var rs=d[i].read?'已读':'未读';var rc=rs=='已读'?'#27ae60':'#e67e22';h+='<tr><td>'+d[i].k+'</td><td>'+d[i].v+'</td><td>'+(d[i].t||'-')+'</td><td><span style=\"color:'+rc+';font-weight:500\">'+rs+'</span></td><td><button onclick=\"markCD('+d[i].id+','+(!d[i].read)+')\" style=\"padding:2px 8px;border:1px solid #2980b9;border-radius:4px;color:#2980b9;background:#fff;cursor:pointer;font-size:12px\">'+(d[i].read?'标未读':'标已读')+'</button> <button onclick=\"delCloudData('+d[i].id+')\" style=\"padding:2px 8px;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;background:#fff;cursor:pointer;font-size:12px\">删除</button></td></tr>'}h+='</tbody></table>';document.getElementById('cdList').innerHTML=h}catch(e){}}
+
+async function markCD(id,readVal){try{var r=await fetch('/clouddata/mark/id/'+id+'?read='+readVal,{method:'POST',credentials:'include'});if(r.ok){loadCloudData();showToast('更新成功','success')}else if(r.status===401)window.location.href='/'}catch(e){}}
 async function delCloudData(id){if(!confirm('确定删除?'))return;try{var r=await fetch('/admin/clouddata/'+id,{method:'DELETE',credentials:'include'});if(r.ok){loadCloudData();showToast('删除成功','success')}else if(r.status===401)window.location.href='/'}catch(e){}}
 function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}loadDashboard()</script></body></html>"""
 
