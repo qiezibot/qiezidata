@@ -30,6 +30,7 @@ async def init_db():
         import asyncpg
         db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
         async with db_pool.acquire() as conn:
+            # Create users table
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
@@ -39,18 +40,34 @@ async def init_db():
                     created_at TIMESTAMP NOT NULL DEFAULT NOW()
                 )
             ''')
-            await conn.execute('''
-                CREATE TABLE IF NOT EXISTS files (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id),
-                    filename VARCHAR(255) NOT NULL,
-                    original_name VARCHAR(255) NOT NULL,
-                    size BIGINT NOT NULL,
-                    mime_type VARCHAR(128),
-                    upload_time TIMESTAMP NOT NULL DEFAULT NOW(),
-                    file_path VARCHAR(512) NOT NULL
-                )
-            ''')
+            # Migrate files table: add user_id if missing
+            cols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='files'")
+            col_names = [c['column_name'] for c in cols]
+            if 'user_id' not in col_names:
+                await conn.execute('ALTER TABLE files ADD COLUMN user_id INTEGER REFERENCES users(id)')
+                # Create default admin user for existing files
+                existing_admin = await conn.fetchrow("SELECT id FROM users WHERE username='admin'")
+                if not existing_admin:
+                    admin_hash = hash_password('admin123')
+                    await conn.execute("INSERT INTO users (username, password_hash, display_name) VALUES ($1, $2, $3)", 'admin', admin_hash, '管理员')
+                    admin_id = await conn.fetchval("SELECT id FROM users WHERE username='admin'")
+                else:
+                    admin_id = existing_admin['id']
+                await conn.execute('UPDATE files SET user_id = $1 WHERE user_id IS NULL', admin_id)
+            # Create files table if not exists at all
+            if not col_names:
+                await conn.execute('''
+                    CREATE TABLE IF NOT EXISTS files (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id),
+                        filename VARCHAR(255) NOT NULL,
+                        original_name VARCHAR(255) NOT NULL,
+                        size BIGINT NOT NULL,
+                        mime_type VARCHAR(128),
+                        upload_time TIMESTAMP NOT NULL DEFAULT NOW(),
+                        file_path VARCHAR(512) NOT NULL
+                    )
+                ''')
     else:
         conn = sqlite3.connect('/data/files.db')
         conn.execute('''
@@ -62,18 +79,34 @@ async def init_db():
                 created_at TEXT NOT NULL
             )
         ''')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS files (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                filename TEXT NOT NULL,
-                original_name TEXT NOT NULL,
-                size INTEGER NOT NULL,
-                mime_type TEXT,
-                upload_time TEXT NOT NULL,
-                file_path TEXT NOT NULL
-            )
-        ''')
+        # Migrate: add user_id if missing
+        cursor = conn.execute("PRAGMA table_info(files)")
+        cols = [row[1] for row in cursor.fetchall()]
+        if 'user_id' not in cols:
+            conn.execute('ALTER TABLE files ADD COLUMN user_id INTEGER REFERENCES users(id)')
+            # Check if admin user exists
+            admin = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+            if not admin:
+                admin_hash = hash_password('admin123')
+                conn.execute("INSERT INTO users (username, password_hash, display_name, created_at) VALUES (?, ?, ?, ?)",
+                             ('admin', admin_hash, '管理员', datetime.utcnow().isoformat()))
+                admin_id = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()[0]
+            else:
+                admin_id = admin[0]
+            conn.execute('UPDATE files SET user_id = ? WHERE user_id IS NULL', (admin_id,))
+        if not cols:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    filename TEXT NOT NULL,
+                    original_name TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    mime_type TEXT,
+                    upload_time TEXT NOT NULL,
+                    file_path TEXT NOT NULL
+                )
+            ''')
         conn.commit()
         conn.close()
 
