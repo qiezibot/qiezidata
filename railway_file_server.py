@@ -7,7 +7,7 @@ import os, uuid, mimetypes, sqlite3, secrets, hashlib
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
-from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse, Response
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 UPLOAD_DIR = os.environ.get('UPLOAD_DIR', '/data/uploads')
