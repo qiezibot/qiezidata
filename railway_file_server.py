@@ -118,19 +118,6 @@ async def get_user(uid):
     row = await db_fetchrow('SELECT id,username,display_name,role FROM users WHERE id=$1' if use_pg else 'SELECT id,username,display_name,role FROM users WHERE id=?', uid)
     return dict(row) if row else None
 
-# ===== HTML Pages (assigned at module load) =====
-_LOGIN_HTML = None
-_ADMIN_HTML_TPL = None
-_USER_HTML_TPL = None
-
-def _init_templates():
-    global _LOGIN_HTML, _ADMIN_HTML_TPL, _USER_HTML_TPL
-    _LOGIN_HTML = LOGIN_HTML
-    _ADMIN_HTML_TPL = ADMIN_HTML_TPL
-    _USER_HTML_TPL = USER_HTML_TPL
-
-_init_templates()
-
 # ===== 路由 =====
 
 @app.get('/')
@@ -284,6 +271,7 @@ if __name__ == '__main__':
     uvicorn.run(app, host=HOST, port=PORT)
 
 # ===== HTML Templates (plain strings, not f-strings) =====
+
 LOGIN_HTML = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:rgba(255,255,255,.95);border-radius:20px;padding:45px 40px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:420px;width:100%;text-align:center;backdrop-filter:blur(10px)}
@@ -417,3 +405,9 @@ function showToast(m,t){var el=document.getElementById('toast');el.textContent=m
 loadFiles();
 </script></body></html>"""
 
+
+
+# ===== Template References (defined above) =====
+_LOGIN_HTML = LOGIN_HTML
+_ADMIN_HTML_TPL = ADMIN_HTML_TPL
+_USER_HTML_TPL = USER_HTML_TPL
