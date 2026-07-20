@@ -537,14 +537,20 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
 </div>
 <div class="tab-page" id="page-clouddata">
-<div class="card"><h2>云数据</h2>
+<div class="card"><h2>☁ 云数据</h2>
 <div style="display:flex;gap:8px;margin-bottom:16px">
 <input type="text" id="cdKey" placeholder="Key" style="flex:1;padding:8px 12px;border:2px solid #eee;border-radius:6px;font-size:14px;outline:none">
 <input type="text" id="cdVal" placeholder="Value" style="flex:2;padding:8px 12px;border:2px solid #eee;border-radius:6px;font-size:14px;outline:none">
 <button onclick="addCloudData()" style="padding:8px 20px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">添加</button>
 </div>
-<div id="cdList"><p style="color:#999;text-align:center;padding:20px">暂无数据</p></div>
+<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+<button onclick="exportCD('all')" style="padding:6px 14px;background:#27ae60;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">⬇ 导出全部</button>
+<button onclick="exportCD('read')" style="padding:6px 14px;background:#2980b9;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">⬇ 导出已读</button>
+<button onclick="exportCD('unread')" style="padding:6px 14px;background:#e67e22;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">⬇ 导出未读</button>
 </div>
+<div id="cdList"><p style="color:#999;text-align:center;padding:20px">加载中...</p></div>
+</div>
+</div></div>
 </div>
 </div></div>
 <div id="toast" class="toast"></div>
@@ -557,8 +563,15 @@ async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:
 async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
 async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">删除</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
 async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
-async function loadCloudData(){try{var r=await fetch('/admin/clouddata',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();if(!d.length){document.getElementById('cdList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无数据</p>';return}var h='<table class=\"user-table\"><thead><tr><th>Key</th><th>Value</th><th>更新时间</th><th>操作</th></tr></thead><tbody>';for(var i=0;i<d.length;i++){h+='<tr><td>'+d[i].k+'</td><td>'+d[i].v+'</td><td>'+(d[i].t||'-')+'</td><td><button onclick=\"delCloudData('+d[i].id+')\" style=\"padding:2px 8px;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;background:#fff;cursor:pointer;font-size:12px\">删除</button></td></tr>'}h+='</tbody></table>';document.getElementById('cdList').innerHTML=h}catch(e){}}
-async function addCloudData(){var k=document.getElementById('cdKey').value.trim();var v=document.getElementById('cdVal').value.trim();if(!k||!v)return;try{var r=await fetch('/admin/clouddata/add',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key:k,value:v})});if(r.ok){document.getElementById('cdKey').value='';document.getElementById('cdVal').value='';loadCloudData();showToast('添加成功','success')}else if(r.status===401)window.location.href='/'}catch(e){}}
+
+async function exportCD(mode) {
+  try{var r=await fetch('/clouddata/export/'+mode,{credentials:'include'});
+  if(r.status===401){window.location.href='/';return}
+  var blob=await r.blob();var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='clouddata_'+mode+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click()
+  }catch(e){showToast('导出失败','error')}
+}
+async function loadCloudData(){try{var r=await fetch('/admin/clouddata',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();if(!d.length){document.getElementById('cdList').innerHTML='<p style="color:#999;text-align:center;padding:20px">暂无数据</p>';return}var h='<table class="user-table"><thead><tr><th>Key</th><th>Value</th><th>时间</th><th>状态</th><th>操作</th></tr></thead><tbody>';for(var i=0;i<d.length;i++){var rs=d[i].read?'已读':'未读';var rc=rs=='已读'?'#27ae60':'#e67e22';h+='<tr><td>'+d[i].k+'</td><td>'+d[i].v+'</td><td>'+(d[i].t||'-')+'</td><td><span style="color:'+rc+';font-weight:500">'+rs+'</span></td><td><button onclick="markCD('+d[i].id+','+(!d[i].read)+')" style="padding:2px 8px;border:1px solid #2980b9;border-radius:4px;color:#2980b9;background:#fff;cursor:pointer;font-size:12px">'+(d[i].read?'标未读':'标已读')+'</button> <button onclick="delCloudData('+d[i].id+')" style="padding:2px 8px;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;background:#fff;cursor:pointer;font-size:12px">删除</button></td></tr>'}h+='</tbody></table>';document.getElementById('cdList').innerHTML=h}catch(e){}}
 async function delCloudData(id){if(!confirm('确定删除?'))return;try{var r=await fetch('/admin/clouddata/'+id,{method:'DELETE',credentials:'include'});if(r.ok){loadCloudData();showToast('删除成功','success')}else if(r.status===401)window.location.href='/'}catch(e){}}
 function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}loadDashboard()</script></body></html>"""
 
