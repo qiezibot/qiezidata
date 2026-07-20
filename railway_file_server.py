@@ -245,13 +245,28 @@ async def debug():
     v = _verify('test123', h)
     v2 = _verify('wrong', h)
     u = await db_fetch('SELECT username, id FROM users LIMIT 5')
+    
+    # More importantly: test actual login query
+    rows = await db_fetch("SELECT id,password_hash FROM users WHERE username='admin'" if use_pg else "SELECT id,password_hash FROM users WHERE username='admin'")
+    login_test = {}
+    if rows:
+        pw = rows[0]['password_hash']
+        login_test = {
+            'admin_id': rows[0]['id'],
+            'pw_type': str(type(pw).__name__),
+            'pw_len': len(str(pw)),
+            'pw_preview': str(pw)[:20] if pw else 'NULL',
+            'verify_works': _verify('admin123', pw),
+        }
+    
     return {'_LOGIN_len': len(str(_LOGIN)),
             'use_pg': use_pg,
             'PORT': PORT,
             'hash_test': f'{h[:20]}...',
             'verify_ok': v,
             'verify_fail': not v2,
-            'users': [dict(r) for r in u]}
+            'users': [dict(r) for r in u],
+            'login_test': login_test}
 
 @app.exception_handler(Exception)
 async def exc_handler(request: Request, exc: Exception):
