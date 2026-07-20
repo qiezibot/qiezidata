@@ -118,17 +118,18 @@ async def get_user(uid):
     row = await db_fetchrow('SELECT id,username,display_name,role FROM users WHERE id=$1' if use_pg else 'SELECT id,username,display_name,role FROM users WHERE id=?', uid)
     return dict(row) if row else None
 
-# ===== HTML Pages (read from templates.py) =====
+# ===== HTML Pages (assigned at module load) =====
 _LOGIN_HTML = None
 _ADMIN_HTML_TPL = None
 _USER_HTML_TPL = None
 
-def load_templates():
+def _init_templates():
     global _LOGIN_HTML, _ADMIN_HTML_TPL, _USER_HTML_TPL
-    from templates import LOGIN_HTML, ADMIN_HTML_TPL, USER_HTML_TPL
     _LOGIN_HTML = LOGIN_HTML
     _ADMIN_HTML_TPL = ADMIN_HTML_TPL
     _USER_HTML_TPL = USER_HTML_TPL
+
+_init_templates()
 
 # ===== 路由 =====
 
@@ -279,10 +280,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=status, content={'detail': detail})
 
 if __name__ == '__main__':
-    # Load HTML templates
-    _LOGIN_HTML = LOGIN_HTML
-    _ADMIN_HTML_TPL = ADMIN_HTML_TPL
-    _USER_HTML_TPL = USER_HTML_TPL
     import uvicorn
     uvicorn.run(app, host=HOST, port=PORT)
 
@@ -418,4 +415,5 @@ function fmtSize(b){if(b<1024)return b+'B';if(b<1024*1024)return (b/1024).toFixe
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}
 loadFiles();
-</script></body></html>"""
+</script></body></html>"""
+
