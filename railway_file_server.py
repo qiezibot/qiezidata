@@ -29,6 +29,10 @@ async def init_db():
         db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
         async with db_pool.acquire() as conn:
             await conn.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR(64) UNIQUE NOT NULL, password_hash VARCHAR(128) NOT NULL, display_name VARCHAR(128), created_at TIMESTAMP NOT NULL DEFAULT NOW(), role VARCHAR(16) NOT NULL DEFAULT \'user\')')
+            # 迁移：给旧 users 表添加 role 列
+            ucols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
+            if 'role' not in [c['column_name'] for c in ucols]:
+                await conn.execute("ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'user'")
             cols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='files'")
             if 'user_id' not in [c['column_name'] for c in cols]:
                 await conn.execute('ALTER TABLE files ADD COLUMN user_id INTEGER REFERENCES users(id)')
@@ -44,6 +48,11 @@ async def init_db():
     else:
         conn = sqlite3.connect('/data/files.db')
         conn.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, display_name TEXT, created_at TEXT NOT NULL, role TEXT NOT NULL DEFAULT \'user\')')
+        # 迁移：给旧 users 表添加 role 列
+        ucur = conn.execute("PRAGMA table_info(users)")
+        ucols = [r[1] for r in ucur.fetchall()]
+        if 'role' not in ucols:
+            conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
         cur = conn.execute("PRAGMA table_info(files)")
         cols = [r[1] for r in cur.fetchall()]
         if 'user_id' not in cols:
