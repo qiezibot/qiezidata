@@ -236,6 +236,7 @@ async def script_cd_export(mode: str, request: Request):
     return Response(content=csv_content, media_type='text/csv',
         headers={'Content-Disposition': 'attachment; filename=' + fname})
 
+@app.post('/clouddata/mark/{key}')
 async def script_cd_mark(key: str, request: Request, read: bool = True):
     _require(request)
     if use_pg:
@@ -284,6 +285,7 @@ async def script_cd_get(key: str, request: Request):
     if not r: raise HTTPException(404, 'key not found')
     return {'key':r['k'],'value':r['v'],'time':str(r['t']),'read':r['read']}
 
+@app.delete('/clouddata/{key}')
 async def script_cd_delete(key: str, request: Request):
     _require(request)
     if use_pg:
