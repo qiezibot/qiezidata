@@ -10,11 +10,16 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 import asyncpg
 
-# ===== Railway 自动注入的数据库地址 =====
-DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/filemgr')
+# ===== Railway 数据库连接（使用独立PG变量，不用共享DATABASE_URL） =====
+PGHOST = os.environ.get('PGHOST', 'localhost')
+PGPORT = os.environ.get('PGPORT', '5432')
+PGUSER = os.environ.get('PGUSER', 'postgres')
+PGPASSWORD = os.environ.get('PGPASSWORD', 'postgres')
+PGDATABASE = os.environ.get('PGDATABASE', 'railway')
+DATABASE_URL = f'postgresql://{PGUSER}:{PGPASSWORD}@{PGHOST}:{PGPORT}/{PGDATABASE}'
 UPLOAD_DIR = os.environ.get('UPLOAD_DIR', '/data/uploads')
 HOST = '0.0.0.0'
-PORT = int(os.environ.get('PORT', '8000'))  # Railway默认8000
+PORT = int(os.environ.get('PORT', '8000'))
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -143,3 +148,4 @@ async def delete_file(file_id: int):
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host=HOST, port=PORT)
+
