@@ -610,25 +610,28 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
 @app.get('/files')
 async def list_files(request: Request):
     uid = require_auth(request)
-    if use_pg:
-        rows = await db_fetch(
-            'SELECT id, filename, original_name, size, mime_type, upload_time FROM files WHERE user_id = $1 ORDER BY upload_time DESC',
-            uid
-        )
-    else:
-        rows = await db_fetch(
-            'SELECT id, filename, original_name, size, mime_type, upload_time FROM files WHERE user_id = ? ORDER BY upload_time DESC',
-            uid
-        )
-    result = []
-    for r in rows:
-        result.append({
-            'id': r['id'], 'filename': r['filename'],
-            'original_name': r['original_name'], 'size': r['size'],
-            'mime_type': r['mime_type'],
-            'upload_time': r['upload_time'] if not use_pg else r['upload_time'].isoformat()
-        })
-    return result
+    try:
+        if use_pg:
+            rows = await db_fetch(
+                'SELECT id, filename, original_name, size, mime_type, upload_time FROM files WHERE user_id = $1 ORDER BY upload_time DESC',
+                uid
+            )
+        else:
+            rows = await db_fetch(
+                'SELECT id, filename, original_name, size, mime_type, upload_time FROM files WHERE user_id = ? ORDER BY upload_time DESC',
+                uid
+            )
+        result = []
+        for r in rows:
+            result.append({
+                'id': r['id'], 'filename': r['filename'],
+                'original_name': r['original_name'], 'size': r['size'],
+                'mime_type': r['mime_type'],
+                'upload_time': r['upload_time'] if not use_pg else r['upload_time'].isoformat()
+            })
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'DB error: {str(e)}')
 
 @app.get('/download/{file_id}')
 async def download_file(request: Request, file_id: int):
@@ -670,6 +673,14 @@ async def delete_file(request: Request, file_id: int):
     del_condition = 'id = $1 AND user_id = $2' if use_pg else 'id = ? AND user_id = ?'
     await db_execute(f'DELETE FROM files WHERE {del_condition}', file_id, uid)
     return {'message': '删除成功'}
+
+# Global exception handler to always return JSON with detail
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    from starlette.responses import JSONResponse
+    status = getattr(exc, 'status_code', 500)
+    detail = str(exc.detail) if hasattr(exc, 'detail') else str(exc)
+    return JSONResponse(status_code=status, content={'detail': detail})
 
 if __name__ == '__main__':
     import uvicorn
