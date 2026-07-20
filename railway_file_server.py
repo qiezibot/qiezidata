@@ -239,6 +239,14 @@ async def admin_files(request: Request):
     rows = await db_fetch("SELECT f.id,f.original_name,f.size,f.upload_time,u.username as owner FROM files f LEFT JOIN users u ON f.user_id=u.id ORDER BY f.upload_time DESC" if not use_pg else "SELECT f.id,f.original_name,f.size,f.upload_time,u.username as owner FROM files f LEFT JOIN users u ON f.user_id=u.id ORDER BY f.upload_time DESC")
     return [dict(r) for r in rows]
 
+@app.get('/debug')
+async def debug():
+    return {'_LOGIN_defined': '_LOGIN' in dir() if False else len(str(_LOGIN)),
+            '_ADMIN_defined': len(str(_ADMIN)),
+            '_USER_defined': len(str(_USER)),
+            'use_pg': use_pg,
+            'PORT': PORT}
+
 @app.exception_handler(Exception)
 async def exc_handler(request: Request, exc: Exception):
     from starlette.responses import JSONResponse
