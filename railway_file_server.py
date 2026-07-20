@@ -28,6 +28,10 @@ async def init_db():
         import asyncpg
         db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
         async with db_pool.acquire() as conn:
+            await conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id SERIAL PRIMARY KEY,k VARCHAR(255) UNIQUE NOT NULL,v TEXT NOT NULL,t TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+
+            await conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id SERIAL PRIMARY KEY,k VARCHAR(255) UNIQUE NOT NULL,v TEXT NOT NULL,t TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+
             await conn.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR(64) UNIQUE NOT NULL, password_hash VARCHAR(128) NOT NULL, display_name VARCHAR(128), created_at TIMESTAMP NOT NULL DEFAULT NOW(), role VARCHAR(16) NOT NULL DEFAULT \'user\')')
             # 迁移：给旧 users 表添加 role 列
             ucols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
@@ -64,6 +68,7 @@ async def init_db():
                 aid = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()[0]
             else: aid = admin[0]
             conn.execute('UPDATE files SET user_id = ? WHERE user_id IS NULL', (aid,))
+        conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id INTEGER PRIMARY KEY AUTOINCREMENT,k TEXT UNIQUE NOT NULL,v TEXT NOT NULL,t TEXT NOT NULL)')
         if not cols:
             conn.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL, mime_type TEXT, upload_time TEXT NOT NULL, file_path TEXT NOT NULL)')
         conn.commit(); conn.close()
@@ -223,6 +228,70 @@ async def delete_file(request: Request, fid: int):
     await db_execute('DELETE FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'DELETE FROM files WHERE id=? AND user_id=?', fid, uid)
     return {'message': 'ok'}
 
+
+@app.get('/admin/clouddata')
+async def clouddata_list(request: Request):
+    uid = _require(request); user = await _user(uid)
+    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if use_pg:
+        return await db_fetch("SELECT id,k,v,to_char(t,'YYYY-MM-DD HH24:MI') AS t FROM clouddata ORDER BY id DESC")
+    else:
+        return await db_fetch('SELECT id,k,v,t FROM clouddata ORDER BY id DESC')
+
+@app.post('/admin/clouddata/add')
+async def clouddata_add(request: Request):
+    uid = _require(request); user = await _user(uid)
+    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    b = await request.json(); k = b.get('key','').strip(); v = b.get('value','').strip()
+    if not k or not v: raise HTTPException(400)
+    if use_pg:
+        await db_exec('INSERT INTO clouddata(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', k, v)
+    else:
+        await db_exec('INSERT OR REPLACE INTO clouddata(k,v) VALUES(?,?)', k, v)
+    return {'ok': True}
+
+@app.delete('/admin/clouddata/{cid}')
+async def clouddata_del(cid: int, request: Request):
+    uid = _require(request); user = await _user(uid)
+    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if use_pg:
+        await db_exec('DELETE FROM clouddata WHERE id=$1', cid)
+    else:
+        await db_exec('DELETE FROM clouddata WHERE id=?', cid)
+    return {'ok': True}
+
+
+@app.get('/admin/clouddata')
+async def clouddata_list(request: Request):
+    uid = _require(request); user = await _user(uid)
+    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if use_pg:
+        return await db_fetch("SELECT id,k,v,to_char(t,'YYYY-MM-DD HH24:MI') AS t FROM clouddata ORDER BY id DESC")
+    else:
+        return await db_fetch('SELECT id,k,v,t FROM clouddata ORDER BY id DESC')
+
+@app.post('/admin/clouddata/add')
+async def clouddata_add(request: Request):
+    uid = _require(request); user = await _user(uid)
+    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    b = await request.json(); k = b.get('key','').strip(); v = b.get('value','').strip()
+    if not k or not v: raise HTTPException(400)
+    if use_pg:
+        await db_exec('INSERT INTO clouddata(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', k, v)
+    else:
+        await db_exec('INSERT OR REPLACE INTO clouddata(k,v) VALUES(?,?)', k, v)
+    return {'ok': True}
+
+@app.delete('/admin/clouddata/{cid}')
+async def clouddata_del(cid: int, request: Request):
+    uid = _require(request); user = await _user(uid)
+    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if use_pg:
+        await db_exec('DELETE FROM clouddata WHERE id=$1', cid)
+    else:
+        await db_exec('DELETE FROM clouddata WHERE id=?', cid)
+    return {'ok': True}
+
 @app.get('/admin/stats')
 async def admin_stats(request: Request):
     uid = _require(request); user = await _user(uid)
@@ -332,8 +401,8 @@ function validateRegister(){var p1=document.getElementById('regPass').value;if(p
 _ADMIN = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理后台 - 茄子数据</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;color:#333;display:flex;min-height:100vh}
-.sidebar{width:220px;background:#fff;border-right:1px solid #e8e8e8;min-height:100vh;flex-shrink:0;display:flex;flex-direction:column;box-shadow:2px 0 8px rgba(0,0,0,.04)}
-.sidebar .logo{padding:20px 16px 12px;font-size:20px;font-weight:700;color:#667eea;text-decoration:none;border-bottom:1px solid #f0f0f0;margin-bottom:8px;white-space:nowrap}
+.sidebar{width:220px;background:#fff;border-right:1px solid #e8e8e8;min-height:100vh;flex-shrink:0;display:flex;flex-direction:column}
+.sidebar .logo{padding:20px 16px 12px;font-size:20px;font-weight:700;color:#667eea;border-bottom:1px solid #f0f0f0;margin-bottom:8px}
 .sidebar .nav-item{padding:12px 20px;cursor:pointer;color:#555;font-size:14px;display:flex;align-items:center;gap:10px;border-left:3px solid transparent;transition:all .2s;margin:2px 0}
 .sidebar .nav-item:hover{background:#f5f7ff;color:#667eea}
 .sidebar .nav-item.active{background:#f0f2ff;color:#667eea;border-left-color:#667eea;font-weight:500}
@@ -384,6 +453,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <div class="nav-item" onclick="switchPage('files',this)"><span class="icon">&#x1f4c1;</span>文件管理</div>
 <div class="nav-item" onclick="switchPage('upload',this)"><span class="icon">&#x1f4e4;</span>上传</div>
 <div class="nav-item" onclick="switchPage('users',this)"><span class="icon">&#x1f465;</span>用户管理</div>
+<div class="nav-item" onclick="switchPage('clouddata',this)"><span class="icon">&#x2601;</span>云数据</div>
 <div class="nav-spacer"></div>
 <div class="nav-bottom"><span>&#x1f464; <!--U--></span> &middot; <a href="/logout">退出登录</a></div>
 </div>
@@ -408,10 +478,20 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <div class="tab-page" id="page-users">
 <div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
 </div>
+<div class="tab-page" id="page-clouddata">
+<div class="card"><h2>云数据</h2>
+<div style="display:flex;gap:8px;margin-bottom:16px">
+<input type="text" id="cdKey" placeholder="Key" style="flex:1;padding:8px 12px;border:2px solid #eee;border-radius:6px;font-size:14px;outline:none">
+<input type="text" id="cdVal" placeholder="Value" style="flex:2;padding:8px 12px;border:2px solid #eee;border-radius:6px;font-size:14px;outline:none">
+<button onclick="addCloudData()" style="padding:8px 20px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">添加</button>
+</div>
+<div id="cdList"><p style="color:#999;text-align:center;padding:20px">暂无数据</p></div>
+</div>
+</div>
 </div></div>
 <div id="toast" class="toast"></div>
 <script>
-function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='upload')loadMyFiles();if(id==='users')loadUsers()}
+function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='upload')loadMyFiles();if(id==='users')loadUsers();if(id==='clouddata')loadCloudData()}
 document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
 async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('上传成功','success');loadMyFiles()}catch(e){showToast('上传失败','error')}document.getElementById('uploadProgress').style.display='none'}
 async function loadDashboard(){try{var r=await fetch('/admin/stats',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();document.getElementById('statUsers').textContent=d.users;document.getElementById('statFiles').textContent=d.files;document.getElementById('statSize').textContent=d.size_display;document.getElementById('statAdmin').textContent=d.admins}catch(e){}}
@@ -419,6 +499,9 @@ async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:
 async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
 async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">删除</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
 async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
+async function loadCloudData(){try{var r=await fetch('/admin/clouddata',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();if(!d.length){document.getElementById('cdList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无数据</p>';return}var h='<table class=\"user-table\"><thead><tr><th>Key</th><th>Value</th><th>更新时间</th><th>操作</th></tr></thead><tbody>';for(var i=0;i<d.length;i++){h+='<tr><td>'+d[i].k+'</td><td>'+d[i].v+'</td><td>'+(d[i].t||'-')+'</td><td><button onclick=\"delCloudData('+d[i].id+')\" style=\"padding:2px 8px;border:1px solid #e74c3c;border-radius:4px;color:#e74c3c;background:#fff;cursor:pointer;font-size:12px\">删除</button></td></tr>'}h+='</tbody></table>';document.getElementById('cdList').innerHTML=h}catch(e){}}
+async function addCloudData(){var k=document.getElementById('cdKey').value.trim();var v=document.getElementById('cdVal').value.trim();if(!k||!v)return;try{var r=await fetch('/admin/clouddata/add',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key:k,value:v})});if(r.ok){document.getElementById('cdKey').value='';document.getElementById('cdVal').value='';loadCloudData();showToast('添加成功','success')}else if(r.status===401)window.location.href='/'}catch(e){}}
+async function delCloudData(id){if(!confirm('确定删除?'))return;try{var r=await fetch('/admin/clouddata/'+id,{method:'DELETE',credentials:'include'});if(r.ok){loadCloudData();showToast('删除成功','success')}else if(r.status===401)window.location.href='/'}catch(e){}}
 function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}loadDashboard()</script></body></html>"""
 
 _USER = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>我的文件 - 茄子数据</title><style>
