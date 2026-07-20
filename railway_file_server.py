@@ -324,9 +324,9 @@ async def clouddata_list(request: Request):
     uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
     if use_pg:
-        return await db_execute("SELECT id,k,v,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata ORDER BY id DESC")
+        return await db_fetch("SELECT id,k,v,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata ORDER BY id DESC")
     else:
-        return await db_execute('SELECT id,k,v,t,read FROM clouddata ORDER BY id DESC')
+        return await db_fetch('SELECT id,k,v,t,read FROM clouddata ORDER BY id DESC')
 
 @app.post('/admin/clouddata/add')
 async def clouddata_add(request: Request):
