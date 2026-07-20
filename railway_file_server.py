@@ -212,6 +212,86 @@ async def download_file(request: Request, fid: int):
     if not os.path.exists(row['file_path']): raise HTTPException(status_code=404)
     return FileResponse(path=row['file_path'], filename=row['original_name'], media_type=row['mime_type'])
 
+@app.get('/clouddata/export/{mode}')
+async def script_cd_export(mode: str, request: Request):
+    _require(request)
+    if mode == 'all':
+        r = await db_fetch('SELECT k,v,t,read FROM clouddata ORDER BY id' if use_pg else 'SELECT k,v,t,read FROM clouddata ORDER BY id')
+    elif mode == 'read':
+        r = await db_fetch('SELECT k,v,t,read FROM clouddata WHERE read=true ORDER BY id' if use_pg else 'SELECT k,v,t,read FROM clouddata WHERE read=1 ORDER BY id')
+    elif mode == 'unread':
+        r = await db_fetch('SELECT k,v,t,read FROM clouddata WHERE read=false ORDER BY id' if use_pg else 'SELECT k,v,t,read FROM clouddata WHERE read=0 ORDER BY id')
+    else:
+        raise HTTPException(400, 'mode must be all/read/unread')
+    import io, csv
+    buf = io.StringIO(); w = csv.writer(buf)
+    w.writerow(['Key','Value','Time','Read'])
+    for x in r:
+        t = str(x['t']) if x['t'] else ''
+        red = 'Yes' if x['read'] else 'No'
+        w.writerow([x['k'], x['v'], t, red])
+    csv_content = buf.getvalue(); buf.close()
+    from datetime import datetime
+    fname = 'clouddata_%s_%s.csv' % (mode, datetime.utcnow().strftime('%Y%m%d_%H%M%S'))
+    return Response(content=csv_content, media_type='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=' + fname})
+
+async def script_cd_mark(key: str, request: Request, read: bool = True):
+    _require(request)
+    if use_pg:
+        await db_execute('UPDATE clouddata SET read=$1 WHERE k=$2', read, key)
+    else:
+        await db_execute('UPDATE clouddata SET read=? WHERE k=?', 1 if read else 0, key)
+    return {'ok': True, 'key': key, 'read': read}
+
+@app.post('/clouddata/mark/id/{cid}')
+async def script_cd_mark_id(cid: int, request: Request, read: bool = True):
+    _require(request)
+    if use_pg:
+        await db_execute('UPDATE clouddata SET read=$1 WHERE id=$2', read, cid)
+    else:
+        await db_execute('UPDATE clouddata SET read=? WHERE id=?', 1 if read else 0, cid)
+    return {'ok': True, 'id': cid, 'read': read}
+
+
+
+@app.post('/clouddata')
+async def script_cd_upsert(request: Request):
+    uid = _require(request)
+    b = await request.json(); k = b.get('key','').strip(); v = b.get('value','').strip()
+    if not k or not v: raise HTTPException(400)
+    if use_pg:
+        await db_execute('INSERT INTO clouddata(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', k, v)
+    else:
+        await db_execute('INSERT OR REPLACE INTO clouddata(k,v) VALUES(?,?)', k, v)
+    return {'ok': True, 'key': k, 'value': v}
+
+@app.get('/clouddata')
+async def script_cd_list(request: Request, key: str = None):
+    _require(request)
+    if key:
+        r = await db_fetchrow('SELECT k,v,t,read FROM clouddata WHERE k=$1' if use_pg else 'SELECT k,v,t,read FROM clouddata WHERE k=?', key)
+        if r:
+            return {'key':r['k'],'value':r['v'],'time':str(r['t']),'read':r['read']}
+        return {'error':'not found'}
+    r = await db_fetch('SELECT k,v,t,read FROM clouddata ORDER BY id DESC' if use_pg else 'SELECT k,v,t,read FROM clouddata ORDER BY id DESC')
+    return [{'key':x['k'],'value':x['v'],'time':str(x['t']) if x['t'] else '','read':x['read']} for x in r]
+
+@app.get('/clouddata/{key}')
+async def script_cd_get(key: str, request: Request):
+    _require(request)
+    r = await db_fetchrow('SELECT k,v,t,read FROM clouddata WHERE k=$1' if use_pg else 'SELECT k,v,t,read FROM clouddata WHERE k=?', key)
+    if not r: raise HTTPException(404, 'key not found')
+    return {'key':r['k'],'value':r['v'],'time':str(r['t']),'read':r['read']}
+
+async def script_cd_delete(key: str, request: Request):
+    _require(request)
+    if use_pg:
+        await db_execute('DELETE FROM clouddata WHERE k=$1', key)
+    else:
+        await db_execute('DELETE FROM clouddata WHERE k=?', key)
+    return {'ok': True, 'key': key}
+
 @app.get('/read/{fid}')
 async def read_file(request: Request, fid: int):
     uid = _require(request)
@@ -234,98 +314,6 @@ async def delete_file(request: Request, fid: int):
     if os.path.exists(row['file_path']): os.remove(row['file_path'])
     await db_execute('DELETE FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'DELETE FROM files WHERE id=? AND user_id=?', fid, uid)
     return {'message': 'ok'}
-
-
-
-@app.post('/clouddata')
-async def script_cd_upsert(request: Request):
-    uid = _require(request)
-    b = await request.json(); k = b.get('key','').strip(); v = b.get('value','').strip()
-    if not k or not v: raise HTTPException(400)
-    if use_pg:
-        await db_execute('INSERT INTO clouddata(k,v) VALUES($1,$2) ON CONFLICT(k) DO UPDATE SET v=$2', k, v)
-    else:
-        await db_execute('INSERT OR REPLACE INTO clouddata(k,v) VALUES(?,?)', k, v)
-    return {'ok': True, 'key': k, 'value': v}
-
-@app.get('/clouddata')
-async def script_cd_list(request: Request, key: str = None):
-    _require(request)
-    if key:
-        if use_pg:
-            r = await db_execute('SELECT k,v,t,read FROM clouddata WHERE k=$1', key)
-            return {'key':r['k'],'value':r['v'],'time':str(r['t']),'read':r['read']} if r else {'error':'not found'}
-        else:
-            rows = await db_execute('SELECT k,v,t,read FROM clouddata WHERE k=?', key)
-            return {'key':rows[0]['k'],'value':rows[0]['v'],'time':rows[0]['t'],'read':rows[0]['read']} if rows else {'error':'not found'}
-    if use_pg:
-        r = await db_execute('SELECT k,v,t,read FROM clouddata ORDER BY id DESC')
-    else:
-        r = await db_execute('SELECT k,v,t,read FROM clouddata ORDER BY id DESC')
-    return [{'key':x['k'],'value':x['v'],'time':str(x['t']) if x['t'] else '','read':x['read']} for x in r]
-
-@app.get('/clouddata/{key}')
-async def script_cd_get(key: str, request: Request):
-    _require(request)
-    if use_pg:
-        r = await db_execute('SELECT k,v,t,read FROM clouddata WHERE k=$1', key)
-    else:
-        r = await db_execute('SELECT k,v,t,read FROM clouddata WHERE k=?', key)
-    if not r: raise HTTPException(404, 'key not found')
-    return {'key':r['k'],'value':r['v'],'time':str(r['t']),'read':r['read']}
-
-@app.delete('/clouddata/{key}')
-async def script_cd_delete(key: str, request: Request):
-    _require(request)
-    if use_pg:
-        await db_execute('DELETE FROM clouddata WHERE k=$1', key)
-    else:
-        await db_execute('DELETE FROM clouddata WHERE k=?', key)
-    return {'ok': True, 'key': key}
-
-@app.get('/clouddata/export/{mode}')
-async def script_cd_export(mode: str, request: Request):
-    _require(request)
-    if mode == 'all':
-        r = await db_execute('SELECT k,v,t,read FROM clouddata ORDER BY id')
-    elif mode == 'read':
-        sql = 'SELECT k,v,t,read FROM clouddata WHERE read=true ORDER BY id' if use_pg else 'SELECT k,v,t,read FROM clouddata WHERE read=1 ORDER BY id'
-        r = await db_execute(sql)
-    elif mode == 'unread':
-        sql = 'SELECT k,v,t,read FROM clouddata WHERE read=false ORDER BY id' if use_pg else 'SELECT k,v,t,read FROM clouddata WHERE read=0 ORDER BY id'
-        r = await db_execute(sql)
-    else:
-        raise HTTPException(400, 'mode must be all/read/unread')
-    import io, csv
-    buf = io.StringIO(); w = csv.writer(buf)
-    w.writerow(['Key','Value','Time','Read'])
-    for x in r:
-        t = str(x['t']) if x['t'] else ''
-        red = 'Yes' if x['read'] else 'No'
-        w.writerow([x['k'], x['v'], t, red])
-    csv_content = buf.getvalue(); buf.close()
-    from datetime import datetime
-    fname = 'clouddata_%s_%s.csv' % (mode, datetime.utcnow().strftime('%Y%m%d_%H%M%S'))
-    return Response(content=csv_content, media_type='text/csv',
-        headers={'Content-Disposition': 'attachment; filename=' + fname})
-
-@app.post('/clouddata/mark/{key}')
-async def script_cd_mark(key: str, request: Request, read: bool = True):
-    _require(request)
-    if use_pg:
-        await db_execute('UPDATE clouddata SET read=$1 WHERE k=$2', read, key)
-    else:
-        await db_execute('UPDATE clouddata SET read=? WHERE k=?', 1 if read else 0, key)
-    return {'ok': True, 'key': key, 'read': read}
-
-@app.post('/clouddata/mark/id/{cid}')
-async def script_cd_mark_id(cid: int, request: Request, read: bool = True):
-    _require(request)
-    if use_pg:
-        await db_execute('UPDATE clouddata SET read=$1 WHERE id=$2', read, cid)
-    else:
-        await db_execute('UPDATE clouddata SET read=? WHERE id=?', 1 if read else 0, cid)
-    return {'ok': True, 'id': cid, 'read': read}
 
 
 
