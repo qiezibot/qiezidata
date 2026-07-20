@@ -1,29 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-File Manager API - Railway部署版 v2.1
-快速修复：模板定义移到底部前 + 延迟赋值
+File Manager - Eggplant Data v2.1
+Multi-user + Admin Dashboard + File Management
 """
 import os, uuid, mimetypes, sqlite3, secrets, hashlib
 from datetime import datetime
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse
-import asyncio
-import functools
 
-# ===== 配置 =====
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 UPLOAD_DIR = os.environ.get('UPLOAD_DIR', '/data/uploads')
 HOST = '0.0.0.0'
 PORT = int(os.environ.get('PORT', '8000'))
 SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app = FastAPI(title='茄子数据 (Railway)', version='2.1')
+app = FastAPI(title='Eggplant Data (Railway)', version='2.1')
 
-# ===== 数据库 =====
+# ===== Database =====
 use_pg = bool(DATABASE_URL)
 db_pool = None
+import asyncio
 
 async def init_db():
     global db_pool
@@ -31,273 +28,233 @@ async def init_db():
         import asyncpg
         db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
         async with db_pool.acquire() as conn:
-            await conn.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY, username VARCHAR(64) UNIQUE NOT NULL,
-                    password_hash VARCHAR(128) NOT NULL, display_name VARCHAR(128),
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW(), role VARCHAR(16) NOT NULL DEFAULT 'user'
-                )
-            ''')
+            await conn.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR(64) UNIQUE NOT NULL, password_hash VARCHAR(128) NOT NULL, display_name VARCHAR(128), created_at TIMESTAMP NOT NULL DEFAULT NOW(), role VARCHAR(16) NOT NULL DEFAULT \'user\')')
             cols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='files'")
-            col_names = [c['column_name'] for c in cols]
-            if 'user_id' not in col_names:
+            if 'user_id' not in [c['column_name'] for c in cols]:
                 await conn.execute('ALTER TABLE files ADD COLUMN user_id INTEGER REFERENCES users(id)')
                 admin = await conn.fetchrow("SELECT id FROM users WHERE username='admin'")
                 if not admin:
-                    h = hash_password('admin123')
-                    await conn.execute("INSERT INTO users (username,password_hash,display_name,role) VALUES ($1,$2,$3,$4)", 'admin', h, '管理员', 'admin')
+                    h = _hash('admin123')
+                    await conn.execute("INSERT INTO users (username,password_hash,display_name,role) VALUES ($1,$2,$3,$4)", 'admin', h, 'Admin', 'admin')
                     aid = await conn.fetchval("SELECT id FROM users WHERE username='admin'")
                 else: aid = admin['id']
                 await conn.execute('UPDATE files SET user_id = $1 WHERE user_id IS NULL', aid)
-            if not col_names:
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS files (
-                        id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
-                        filename VARCHAR(255) NOT NULL, original_name VARCHAR(255) NOT NULL,
-                        size BIGINT NOT NULL, mime_type VARCHAR(128),
-                        upload_time TIMESTAMP NOT NULL DEFAULT NOW(), file_path VARCHAR(512) NOT NULL
-                    )
-                ''')
+            if not cols:
+                await conn.execute('CREATE TABLE IF NOT EXISTS files (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), filename VARCHAR(255) NOT NULL, original_name VARCHAR(255) NOT NULL, size BIGINT NOT NULL, mime_type VARCHAR(128), upload_time TIMESTAMP NOT NULL DEFAULT NOW(), file_path VARCHAR(512) NOT NULL)')
     else:
         conn = sqlite3.connect('/data/files.db')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL, display_name TEXT, created_at TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'user'
-            )
-        ''')
+        conn.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, display_name TEXT, created_at TEXT NOT NULL, role TEXT NOT NULL DEFAULT \'user\')')
         cur = conn.execute("PRAGMA table_info(files)")
         cols = [r[1] for r in cur.fetchall()]
         if 'user_id' not in cols:
             conn.execute('ALTER TABLE files ADD COLUMN user_id INTEGER REFERENCES users(id)')
             admin = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()
             if not admin:
-                h = hash_password('admin123')
-                conn.execute("INSERT INTO users (username,password_hash,display_name,created_at,role) VALUES (?,?,?,?,?)",('admin',h,'管理员',datetime.utcnow().isoformat(),'admin'))
+                h = _hash('admin123')
+                conn.execute("INSERT INTO users (username,password_hash,display_name,created_at,role) VALUES (?,?,?,?,?)",('admin',h,'Admin',datetime.utcnow().isoformat(),'admin'))
                 aid = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()[0]
             else: aid = admin[0]
             conn.execute('UPDATE files SET user_id = ? WHERE user_id IS NULL', (aid,))
         if not cols:
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS files (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
-                    filename TEXT NOT NULL, original_name TEXT NOT NULL,
-                    size INTEGER NOT NULL, mime_type TEXT, upload_time TEXT NOT NULL, file_path TEXT NOT NULL
-                )
-            ''')
+            conn.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL, mime_type TEXT, upload_time TEXT NOT NULL, file_path TEXT NOT NULL)')
         conn.commit(); conn.close()
 
 @app.on_event('startup')
 async def startup(): await init_db()
 
-# ===== Database Helpers =====
+# ===== Helpers =====
 async def db_fetch(sql, *params):
     if use_pg:
         async with db_pool.acquire() as conn: return await conn.fetch(sql, *params)
     else:
         conn = sqlite3.connect('/data/files.db'); conn.row_factory = sqlite3.Row
         rows = conn.execute(sql, params).fetchall(); conn.close(); return rows
-
 async def db_fetchrow(sql, *params):
     if use_pg:
         async with db_pool.acquire() as conn: return await conn.fetchrow(sql, *params)
     else:
         conn = sqlite3.connect('/data/files.db'); conn.row_factory = sqlite3.Row
         row = conn.execute(sql, params).fetchone(); conn.close(); return row
-
 async def db_execute(sql, *params):
     if use_pg:
         async with db_pool.acquire() as conn: return await conn.execute(sql, *params)
     else:
         conn = sqlite3.connect('/data/files.db'); cur = conn.execute(sql, params); conn.commit(); conn.close(); return cur
-
 async def db_fetchval(sql, *params):
     if use_pg:
         async with db_pool.acquire() as conn: return await conn.fetchval(sql, *params)
     else:
-        conn = sqlite3.connect('/data/files.db')
-        val = conn.execute(sql, params).fetchone()[0]; conn.close(); return val
+        conn = sqlite3.connect('/data/files.db'); val = conn.execute(sql, params).fetchone()[0]; conn.close(); return val
 
-# ===== User System =====
-AUTH_COOKIE_NAME = 'qiezidata_token'
-def hash_password(pw):
+AUTH_COOKIE = 'eggplant_token'
+def _hash(pw):
     s = secrets.token_hex(16); return s + ':' + hashlib.sha256((s + pw).encode()).hexdigest()
-def verify_password(pw, stored):
+def _verify(pw, stored):
     s, h = stored.split(':', 1); return h == hashlib.sha256((s + pw).encode()).hexdigest()
-def make_session_token(uid):
-    sig = hashlib.sha256(f'{uid}:{SECRET_KEY}'.encode()).hexdigest()[:16]
-    return f'{uid}:{sig}'
-def parse_session_token(token):
+def _token(uid):
+    sig = hashlib.sha256(f'{uid}:{SECRET_KEY}'.encode()).hexdigest()[:16]; return f'{uid}:{sig}'
+def _parse(token):
     try:
         parts = token.split(':'); uid = int(parts[0])
-        expected = hashlib.sha256(f'{uid}:{SECRET_KEY}'.encode()).hexdigest()[:16]
-        return uid if parts[1] == expected else None
+        return uid if parts[1] == hashlib.sha256(f'{uid}:{SECRET_KEY}'.encode()).hexdigest()[:16] else None
     except: return None
-def check_auth(request): return parse_session_token(request.cookies.get(AUTH_COOKIE_NAME, ''))
-def require_auth(request):
-    uid = check_auth(request)
-    if uid is None: raise HTTPException(status_code=401, detail='not logged in')
+def _auth(request): return _parse(request.cookies.get(AUTH_COOKIE, ''))
+def _require(request):
+    uid = _auth(request)
+    if uid is None: raise HTTPException(status_code=401)
     return uid
-
-async def get_user(uid):
+async def _user(uid):
     row = await db_fetchrow('SELECT id,username,display_name,role FROM users WHERE id=$1' if use_pg else 'SELECT id,username,display_name,role FROM users WHERE id=?', uid)
     return dict(row) if row else None
 
-# ===== HTML Templates =====
-# Must be defined BEFORE if __name__ == '__main__'
-LOGIN_HTML = open(os.path.join(os.path.dirname(__file__), 'login.html'), 'r', encoding='utf-8').read() if os.path.exists(os.path.join(os.path.dirname(__file__), 'login.html')) else '<html><body><h1>Loading...</h1></body></html>'
-ADMIN_HTML_TPL = open(os.path.join(os.path.dirname(__file__), 'admin.html'), 'r', encoding='utf-8').read() if os.path.exists(os.path.join(os.path.dirname(__file__), 'admin.html')) else '<html><body><h1>Loading...</h1></body></html>'
-USER_HTML_TPL = open(os.path.join(os.path.dirname(__file__), 'user.html'), 'r', encoding='utf-8').read() if os.path.exists(os.path.join(os.path.dirname(__file__), 'user.html')) else '<html><body><h1>Loading...</h1></body></html>'
-
-# === Routes ===
-
+# ===== Routes =====
 @app.get('/')
 async def home(request: Request):
-    uid = check_auth(request)
-    if uid is None:
-        return HTMLResponse(LOGIN_HTML)
-    user = await get_user(uid)
-    if not user: return HTMLResponse(LOGIN_HTML)
+    uid = _auth(request)
+    if uid is None: return HTMLResponse(_LOGIN)
+    user = await _user(uid)
+    if not user: return HTMLResponse(_LOGIN)
+    name = user.get('display_name','') or user.get('username','')
     if user.get('role') == 'admin':
-        return HTMLResponse(ADMIN_HTML_TPL.replace('__USERNAME__', user.get('display_name','') or user.get('username','')))
-    return HTMLResponse(USER_HTML_TPL.replace('__USERNAME__', user.get('display_name','') or user.get('username','')))
+        return HTMLResponse(_ADMIN.replace('<!--U-->', name))
+    return HTMLResponse(_USER.replace('<!--U-->', name))
 
 @app.post('/register')
 async def register(username: str = Form(...), password: str = Form(...), display_name: str = Form(None)):
     username = username.strip()
-    if len(username) < 2 or len(username) > 20:
-        return RedirectResponse(url='/?error=reg_invalid', status_code=302)
-    existing = await db_fetchrow('SELECT id FROM users WHERE username=$1' if use_pg else 'SELECT id FROM users WHERE username=?', username)
-    if existing: return RedirectResponse(url='/?error=reg_exists', status_code=302)
-    pw_hash = hash_password(password)
-    now = datetime.utcnow().isoformat()
+    if len(username) < 2: return RedirectResponse(url='/?e=inv', status_code=302)
+    if await db_fetchrow('SELECT id FROM users WHERE username=$1' if use_pg else 'SELECT id FROM users WHERE username=?', username):
+        return RedirectResponse(url='/?e=exists', status_code=302)
+    pw = _hash(password); now = datetime.utcnow().isoformat()
     if use_pg:
-        await db_execute('INSERT INTO users (username,password_hash,display_name) VALUES ($1,$2,$3)', username, pw_hash, display_name or username)
+        await db_execute('INSERT INTO users (username,password_hash,display_name) VALUES ($1,$2,$3)', username, pw, display_name or username)
     else:
-        await db_execute('INSERT INTO users (username,password_hash,display_name,created_at) VALUES (?,?,?,?)', username, pw_hash, display_name or username, now)
-    return RedirectResponse(url='/?registered=1', status_code=302)
+        await db_execute('INSERT INTO users (username,password_hash,display_name,created_at) VALUES (?,?,?,?)', username, pw, display_name or username, now)
+    return RedirectResponse(url='/?reg=1', status_code=302)
 
 @app.post('/login')
 async def login(username: str = Form(...), password: str = Form(...)):
     row = await db_fetchrow('SELECT id,password_hash FROM users WHERE username=$1' if use_pg else 'SELECT id,password_hash FROM users WHERE username=?', username.strip())
-    if not row or not verify_password(password, row['password_hash']):
-        return RedirectResponse(url='/?error=1', status_code=302)
-    token = make_session_token(row['id'])
+    if not row or not _verify(password, row['password_hash']):
+        return RedirectResponse(url='/?e=1', status_code=302)
+    token = _token(row['id'])
     resp = RedirectResponse(url='/', status_code=302)
-    resp.set_cookie(key=AUTH_COOKIE_NAME, value=token, httponly=True, max_age=86400*7, samesite='lax')
+    resp.set_cookie(key=AUTH_COOKIE, value=token, httponly=True, max_age=86400*7, samesite='lax')
     return resp
 
 @app.get('/logout')
 async def logout():
     resp = RedirectResponse(url='/', status_code=302)
-    resp.delete_cookie(AUTH_COOKIE_NAME)
+    resp.delete_cookie(AUTH_COOKIE)
     return resp
 
 @app.get('/me')
 async def get_me(request: Request):
-    uid = require_auth(request)
-    user = await get_user(uid)
+    uid = _require(request); user = await _user(uid)
     if not user: raise HTTPException(status_code=404)
     return user
 
 @app.post('/upload')
 async def upload_file(request: Request, file: UploadFile = File(...)):
-    uid = require_auth(request)
+    uid = _require(request)
     ext = str(Path(file.filename).suffix) if file.filename else ''
-    unique_name = f'{uuid.uuid4().hex}{ext}'
-    user_dir = os.path.join(UPLOAD_DIR, str(uid))
-    os.makedirs(user_dir, exist_ok=True)
-    file_path = os.path.join(user_dir, unique_name)
-    content = await file.read()
-    with open(file_path, 'wb') as f: f.write(content)
-    mime = file.content_type or mimetypes.guess_type(str(file.filename))[0] or 'application/octet-stream'
+    uname = f'{uuid.uuid4().hex}{ext}'
+    udir = os.path.join(UPLOAD_DIR, str(uid)); os.makedirs(udir, exist_ok=True)
+    fp = os.path.join(udir, uname)
+    c = await file.read()
+    with open(fp, 'wb') as f: f.write(c)
+    m = file.content_type or mimetypes.guess_type(str(file.filename))[0] or 'application/octet-stream'
     if use_pg:
-        row = await db_fetchrow('INSERT INTO files (user_id,filename,original_name,size,mime_type,file_path) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,upload_time', uid, unique_name, file.filename, len(content), mime, file_path)
+        row = await db_fetchrow('INSERT INTO files (user_id,filename,original_name,size,mime_type,file_path) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,upload_time', uid, uname, file.filename, len(c), m, fp)
         fid, upt = row['id'], row['upload_time'].isoformat()
     else:
         now = datetime.utcnow().isoformat()
-        cur = await db_execute('INSERT INTO files (user_id,filename,original_name,size,mime_type,upload_time,file_path) VALUES (?,?,?,?,?,?,?)', uid, unique_name, file.filename, len(content), mime, now, file_path)
+        cur = await db_execute('INSERT INTO files (user_id,filename,original_name,size,mime_type,upload_time,file_path) VALUES (?,?,?,?,?,?,?)', uid, uname, file.filename, len(c), m, now, fp)
         fid, upt = cur.lastrowid, now
-    return {'id': fid, 'filename': file.filename, 'size': len(content), 'mime': mime, 'upload_time': upt}
+    return {'id': fid, 'filename': file.filename, 'size': len(c), 'mime': m, 'upload_time': upt}
 
 @app.get('/files')
 async def list_files(request: Request):
-    uid = require_auth(request)
+    uid = _require(request)
     rows = await db_fetch('SELECT id,filename,original_name,size,mime_type,upload_time FROM files WHERE user_id=$1 ORDER BY upload_time DESC' if use_pg else 'SELECT id,filename,original_name,size,mime_type,upload_time FROM files WHERE user_id=? ORDER BY upload_time DESC', uid)
-    return [{**dict(r), 'upload_time': r['upload_time'] if not use_pg else r['upload_time'].isoformat()} for r in rows]
+    return [{**dict(r), 'upload_time': str(r['upload_time'])} for r in rows]
+
+def _get_file(uid, fid):
+    return db_fetchrow('SELECT * FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'SELECT * FROM files WHERE id=? AND user_id=?', fid, uid)
 
 @app.get('/download/{fid}')
 async def download_file(request: Request, fid: int):
-    uid = require_auth(request)
-    row = await db_fetchrow('SELECT * FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'SELECT * FROM files WHERE id=? AND user_id=?', fid, uid)
-    if not row: raise HTTPException(status_code=404)
+    uid = _require(request)
+    rows = await db_fetch('SELECT * FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'SELECT * FROM files WHERE id=? AND user_id=?', fid, uid)
+    if not rows: raise HTTPException(status_code=404)
+    row = rows[0]
     if not os.path.exists(row['file_path']): raise HTTPException(status_code=404)
     return FileResponse(path=row['file_path'], filename=row['original_name'], media_type=row['mime_type'])
 
 @app.get('/read/{fid}')
 async def read_file(request: Request, fid: int):
-    uid = require_auth(request)
-    row = await db_fetchrow('SELECT * FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'SELECT * FROM files WHERE id=? AND user_id=?', fid, uid)
-    if not row: raise HTTPException(status_code=404)
+    uid = _require(request)
+    rows = await db_fetch('SELECT * FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'SELECT * FROM files WHERE id=? AND user_id=?', fid, uid)
+    if not rows: raise HTTPException(status_code=404)
+    row = rows[0]
     if not os.path.exists(row['file_path']): raise HTTPException(status_code=404)
-    text_exts = {'.txt','.json','.xml','.py','.js','.sh','.yaml','.yml','.toml','.sql','.lua','.php','.html','.css','.md','.csv','.ini','.cfg','.conf','.log','.bat','.ps1','.env','.gitignore','.dockerfile','.c','.cpp','.h','.hpp','.java','.go','.rs','.rb','.pl'}
-    ext = Path(row['original_name']).suffix.lower()
-    if not (row['mime_type'] or '').startswith('text/') and ext not in text_exts:
+    te = {'.txt','.json','.xml','.py','.js','.sh','.sql','.html','.css','.md','.csv','.log','.env'}
+    if not (row['mime_type'] or '').startswith('text/') and Path(row['original_name']).suffix.lower() not in te:
         raise HTTPException(status_code=400)
-    try:
-        with open(row['file_path'], 'r', encoding='utf-8') as f: return PlainTextResponse(f.read())
-    except UnicodeDecodeError: raise HTTPException(status_code=400)
+    try: return PlainTextResponse(open(row['file_path'],'r',encoding='utf-8').read())
+    except: raise HTTPException(status_code=400)
 
 @app.delete('/delete/{fid}')
 async def delete_file(request: Request, fid: int):
-    uid = require_auth(request)
+    uid = _require(request)
     rows = await db_fetch('SELECT * FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'SELECT * FROM files WHERE id=? AND user_id=?', fid, uid)
     if not rows: raise HTTPException(status_code=404)
     row = rows[0]
     if os.path.exists(row['file_path']): os.remove(row['file_path'])
     await db_execute('DELETE FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'DELETE FROM files WHERE id=? AND user_id=?', fid, uid)
-    return {'message': 'deleted'}
+    return {'message': 'ok'}
 
-# Admin routes
 @app.get('/admin/stats')
 async def admin_stats(request: Request):
-    uid = require_auth(request)
-    user = await get_user(uid)
+    uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
     u = await db_fetchval('SELECT COUNT(*) FROM users' if not use_pg else 'SELECT COUNT(*) FROM users')
     f = await db_fetchval('SELECT COUNT(*) FROM files' if not use_pg else 'SELECT COUNT(*) FROM files')
-    s = await db_fetchval('SELECT COALESCE(SUM(size),0) FROM files' if not use_pg else 'SELECT COALESCE(SUM(size),0) FROM files')
+    s = await db_fetchval("SELECT COALESCE(SUM(size),0) FROM files" if not use_pg else "SELECT COALESCE(SUM(size),0) FROM files")
     a = await db_fetchval("SELECT COUNT(*) FROM users WHERE role='admin'" if not use_pg else "SELECT COUNT(*) FROM users WHERE role='admin'")
-    def fm(b): return f'{b}B' if b<1024 else f'{b/1024:.1f}KB' if b<1024**2 else f'{b/1024**2:.1f}MB' if b<1024**3 else f'{b/1024**3:.1f}GB'
+    def fm(b): return f'{b}B' if b<1024 else f'{b/1024:.1f}KB' if b<1024**2 else f'{b/1024**2:.1f}MB'
     return {'users': u, 'files': f, 'size': s, 'size_display': fm(s), 'admins': a}
 
 @app.get('/admin/users')
 async def admin_users(request: Request):
-    uid = require_auth(request)
-    user = await get_user(uid)
+    uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
     rows = await db_fetch('SELECT id,username,display_name,role,created_at FROM users ORDER BY id' if not use_pg else 'SELECT id,username,display_name,role,created_at FROM users ORDER BY id')
     return [dict(r) for r in rows]
 
 @app.get('/admin/files')
 async def admin_files(request: Request):
-    uid = require_auth(request)
-    user = await get_user(uid)
+    uid = _require(request); user = await _user(uid)
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
-    rows = await db_fetch('SELECT f.id,f.original_name,f.size,f.upload_time,u.username as owner FROM files f LEFT JOIN users u ON f.user_id=u.id ORDER BY f.upload_time DESC' if not use_pg else 'SELECT f.id,f.original_name,f.size,f.upload_time,u.username as owner FROM files f LEFT JOIN users u ON f.user_id=u.id ORDER BY f.upload_time DESC')
-    return [{'id': r['id'], 'original_name': r['original_name'], 'size': r['size'],
-             'upload_time': str(r['upload_time']) if hasattr(r['upload_time'], 'isoformat') else r['upload_time'],
-             'owner': r['owner'] or '?'} for r in rows]
+    rows = await db_fetch("SELECT f.id,f.original_name,f.size,f.upload_time,u.username as owner FROM files f LEFT JOIN users u ON f.user_id=u.id ORDER BY f.upload_time DESC" if not use_pg else "SELECT f.id,f.original_name,f.size,f.upload_time,u.username as owner FROM files f LEFT JOIN users u ON f.user_id=u.id ORDER BY f.upload_time DESC")
+    return [dict(r) for r in rows]
 
-# Exception handler
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def exc_handler(request: Request, exc: Exception):
     from starlette.responses import JSONResponse
-    status = getattr(exc, 'status_code', 500)
-    detail = str(exc.detail) if hasattr(exc, 'detail') else str(exc)
-    return JSONResponse(status_code=status, content={'detail': detail})
+    return JSONResponse(status_code=getattr(exc,'status_code',500), content={'detail': str(exc.detail if hasattr(exc,'detail') else exc)})
+
+# ===== HTML =====
+_LOGIN = """\
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eggplant Data</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:rgba(255,255,255,.95);border-radius:20px;padding:45px 40px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:420px;width:100%;text-align:center}.card h1{font-size:32px;color:#333;margin-bottom:5px}.card .subtitle{color:#999;margin-bottom:25px;font-size:14px}.tabs{display:flex;margin-bottom:25px;border-bottom:2px solid #eee}.tab{flex:1;text-align:center;padding:12px;cursor:pointer;color:#999;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-2px}.tab.active{color:#667eea;border-bottom-color:#667eea}.form{display:none}.form.active{display:block}.input-group{margin-bottom:18px;text-align:left}.input-group label{display:block;font-size:13px;color:#555;margin-bottom:5px}.input-group input{width:100%;padding:12px 14px;border:2px solid #eee;border-radius:10px;font-size:15px;outline:none}.input-group input:focus{border-color:#667eea}.btn{width:100%;padding:12px;background:#667eea;color:#fff;border:none;border-radius:10px;font-size:16px;cursor:pointer}.btn:hover{background:#5a6fd6}.msg{font-size:13px;margin-top:10px;display:none;padding:8px 12px;border-radius:6px;color:#c0392b;background:#fdecea}</style></head><body><div class="card"><h1>馃崋 Eggplant Data</h1><p class="subtitle">File Manager v2.1</p><div class="tabs"><div class="tab active" onclick="switchTab('login')">Login</div><div class="tab" onclick="switchTab('register')">Register</div></div><div class="form active" id="loginForm"><form method="post" action="/login"><div class="input-group"><label>Username</label><input type="text" name="username" placeholder="Enter username" required autofocus></div><div class="input-group"><label>Password</label><input type="password" name="password" placeholder="Enter password" required></div><button class="btn" type="submit">Login</button></form><div class="msg" id="loginError">Wrong username or password</div></div><div class="form" id="registerForm"><form method="post" action="/register" onsubmit="return validateRegister()"><div class="input-group"><label>Username</label><input type="text" name="username" id="regUser" placeholder="2-20 chars" required minlength="2" maxlength="20" pattern="^[a-zA-Z0-9_]+$"></div><div class="input-group"><label>Display Name</label><input type="text" name="display_name" placeholder="Optional" maxlength="30"></div><div class="input-group"><label>Password</label><input type="password" name="password" id="regPass" placeholder="Min 4 chars" required minlength="4"></div><button class="btn" type="submit">Register</button></form><div class="msg" id="regError"></div></div></div><script>var p=new URLSearchParams(window.location.search);if(p.get('e')==='1')document.getElementById('loginError').style.display='block';if(p.get('reg')==='1'){document.getElementById('loginError').textContent='Registered OK, please login';document.getElementById('loginError').className='msg';document.getElementById('loginError').style.display='block';document.getElementById('loginError').style.color='#27ae60';document.getElementById('loginError').style.background='#eafaf1'}function switchTab(n){document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});document.querySelectorAll('.form').forEach(function(f){f.classList.remove('active')});if(n==='login'){document.querySelector('.tab:first-child').classList.add('active');document.getElementById('loginForm').classList.add('active')}else{document.querySelector('.tab:last-child').classList.add('active');document.getElementById('registerForm').classList.add('active')}}function validateRegister(){var p1=document.getElementById('regPass').value;if(p1.length<4){document.getElementById('regError').textContent='Password too short';document.getElementById('regError').style.display='block';return false}return true}</script></body></html>"""
+
+_ADMIN = """\
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin - Eggplant Data</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;min-height:100vh;color:#333}.header{background:#fff;border-bottom:1px solid #e8e8e8;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0}.header .logo{font-size:20px;font-weight:700;color:#667eea;text-decoration:none}.header .user-area{display:flex;align-items:center;gap:16px;font-size:14px}.header .user-area a{color:#999;text-decoration:none}.layout{display:flex}.sidebar{width:200px;background:#fff;border-right:1px solid #e8e8e8;padding:16px 0;min-height:calc(100vh-56px)}.sidebar .nav-item{padding:12px 24px;cursor:pointer;color:#555;font-size:14px;border-left:3px solid transparent}.sidebar .nav-item.active{background:#f0f2ff;color:#667eea;border-left-color:#667eea;font-weight:500}.sidebar .nav-item:hover{background:#f5f7ff;color:#667eea}.main{flex:1;padding:24px}.card{background:#fff;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}.card h2{font-size:18px;margin-bottom:16px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}.stat-card{background:#fff;border-radius:12px;padding:20px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06)}.stat-card .num{font-size:32px;font-weight:700;color:#667eea}.stat-card .label{font-size:13px;color:#999}.tab-page{display:none}.tab-page.active{display:block}.upload-zone{border:2px dashed #ccc;border-radius:12px;padding:40px;text-align:center;cursor:pointer}.upload-zone:hover{border-color:#667eea;background:#f8f9ff}progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}.user-table{width:100%;border-collapse:collapse;font-size:14px}.user-table th{text-align:left;padding:10px 12px;border-bottom:2px solid #eee;color:#666}.user-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0}.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;opacity:0;z-index:999}.toast.show{opacity:1}.toast.success{background:#27ae60}.toast.error{background:#e74c3c}.file-list{list-style:none}.file-item{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f0f0}.file-info{flex:1}.file-name{font-weight:500}.file-meta{font-size:12px;color:#999}.file-actions button,.file-actions a{padding:5px 10px;font-size:12px;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#555;background:#fff;cursor:pointer}.file-actions button:hover{background:#ffeaea;border-color:#e74c3c;color:#e74c3c}</style></head><body><div class="header"><a href="/" class="logo">馃崋 Eggplant Data</a><div class="user-area"><span>馃懁 <!--U--></span><a href="/logout">Logout</a></div></div><div class="layout"><div class="sidebar"><div class="nav-item active" onclick="switchPage('dashboard',this)">馃搳 Dashboard</div><div class="nav-item" onclick="switchPage('files',this)">馃搧 Files</div><div class="nav-item" onclick="switchPage('upload',this)">馃摛 Upload</div><div class="nav-item" onclick="switchPage('users',this)">馃懃 Users</div></div><div class="main"><div class="tab-page active" id="page-dashboard"><div class="stats"><div class="stat-card"><div class="num" id="statUsers">-</div><div class="label">Users</div></div><div class="stat-card"><div class="num" id="statFiles">-</div><div class="label">Files</div></div><div class="stat-card"><div class="num" id="statSize">-</div><div class="label">Storage</div></div><div class="stat-card"><div class="num" id="statAdmin">-</div><div class="label">Admins</div></div></div></div><div class="tab-page" id="page-files"><div class="card"><h2>All Files</h2><div id="fileList"><p>No files</p></div></div></div><div class="tab-page" id="page-upload"><div class="card"><h2>Upload</h2><div class="upload-zone" id="dropZone"><p style="font-size:48px;margin:20px">馃搧</p><p>Drag & drop or click</p><input type="file" id="fileInput" style="display:none"></div><progress id="uploadProgress" max="100"></progress><div style="margin-top:20px"><h3>My Files</h3><div id="myFileList"><p>None</p></div></div></div></div><div class="tab-page" id="page-users"><div class="card"><h2>Users</h2><table class="user-table"><thead><tr><th>ID</th><th>Username</th><th>Display</th><th>Role</th><th>Created</th></tr></thead><tbody id="userTableBody"></tbody></table></div></div></div></div><div id="toast" class="toast"></div><script>function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='users')loadUsers();if(id==='upload')loadMyFiles()}function setupUpload(){document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])})}setupUpload();async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('Uploaded','success');loadMyFiles()}catch(e){showToast('Failed','error')}document.getElementById('uploadProgress').style.display='none'}async function loadDashboard(){try{var r=await fetch('/admin/stats',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();document.getElementById('statUsers').textContent=d.users;document.getElementById('statFiles').textContent=d.files;document.getElementById('statSize').textContent=d.size_display;document.getElementById('statAdmin').textContent=d.admins}catch(e){}}async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p>No files</p>';return}document.getElementById('fileList').innerHTML='<ul>'+files.map(function(f){return'<li class="file-item"><div class="file-info"><div class="file-name">'+f.original_name+'</div><div class="file-meta">'+f.size+'B 路 '+f.owner+'</div></div><div class="file-actions"><a href="/download/'+f.id+'" download>猬�</a></div></li>'}).join('')+'</ul>'}catch(e){}}async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();document.getElementById('userTableBody').innerHTML=users.map(function(u){return'<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td></tr>'}).join('')}catch(e){}}async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p>None</p>';return}document.getElementById('myFileList').innerHTML='<ul>'+files.map(function(f){return'<li class="file-item"><div class="file-info"><div class="file-name">'+f.original_name+'</div><div class="file-meta">'+f.size+'B</div></div><div class="file-actions"><a href="/download/'+f.id+'" download>猬�</a></div></li>'}).join('')+'</ul>'}catch(e){}}function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}loadDashboard()</script></body></html>"""
+
+_USER = """\
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eggplant Data - My Files</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5}.header{background:#fff;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e8e8e8}.header .logo{font-size:20px;font-weight:700;color:#667eea;text-decoration:none}.header .user-area{display:flex;align-items:center;gap:16px;font-size:14px;color:#666}.header .user-area a{color:#999;text-decoration:none}.container{max-width:900px;margin:24px auto;padding:0 20px}.card{background:#fff;border-radius:12px;padding:24px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}.card h2{font-size:18px;margin-bottom:16px}.upload-zone{border:2px dashed #ccc;border-radius:12px;padding:40px;text-align:center;cursor:pointer}.upload-zone:hover{border-color:#667eea;background:#f8f9ff}progress{width:100%;height:6px;margin-top:10px;display:none}.file-list{list-style:none}.file-item{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f0f0f0}.file-info{flex:1}.file-name{font-weight:500}.file-meta{font-size:12px;color:#999}.file-actions{display:flex;gap:6px}.file-actions a,.file-actions button{padding:5px 10px;font-size:12px;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#555;background:#fff;cursor:pointer}.file-actions button:hover{background:#ffeaea;border-color:#e74c3c;color:#e74c3c}.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;opacity:0;z-index:999}.toast.show{opacity:1}.toast.success{background:#27ae60}.toast.error{background:#e74c3c}
+</style></head><body><div class="header"><a href="/" class="logo">?? Eggplant Data</a><div class="user-area"><span>?? <!--U--></span><a href="/logout">Logout</a></div></div><div class="container"><div class="card"><h2>Upload</h2><div class="upload-zone" id="dropZone"><p style="font-size:48px;margin:10px">??</p><p>Drag & drop or click</p><input type="file" id="fileInput" style="display:none"></div><progress id="uploadProgress" max="100"></progress></div><div class="card"><h2>My Files</h2><div id="fileList"><p>None</p></div></div></div><div id="toast" class="toast"></div><script>function setupUpload(){document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])})}setupUpload();async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('Uploaded','success');loadFiles()}catch(e){showToast('Failed','error')}document.getElementById('uploadProgress').style.display='none'}async function loadFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p>None</p>';return}document.getElementById('fileList').innerHTML='<ul>'+files.map(function(f){return'<li class="file-item"><div class="file-info"><div class="file-name">'+f.original_name+'</div><div class="file-meta">'+f.size+'B</div></div><div class="file-actions"><a href="/download/'+f.id+'" download>?</a><button class="del-btn" onclick="delFile('+f.id+')">??</button></div></li>'}).join('')+'</ul>'}catch(e){}}async function delFile(id){if(!confirm('Delete?'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('Deleted','success');loadFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}loadFiles()</script></body></html>"""
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host=HOST, port=PORT)
+    uvicorn.run(app, host=HOST, port=PORT)
