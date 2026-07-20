@@ -69,6 +69,23 @@ async def init_db():
                 await conn.execute('UPDATE files SET user_id = $1 WHERE user_id IS NULL', aid)
             if not cols:
                 await conn.execute('CREATE TABLE IF NOT EXISTS files (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), filename VARCHAR(255) NOT NULL, original_name VARCHAR(255) NOT NULL, size BIGINT NOT NULL, mime_type VARCHAR(128), upload_time TIMESTAMP NOT NULL DEFAULT NOW(), file_path VARCHAR(512) NOT NULL)')
+            # clouddata_projects
+            await conn.execute('CREATE TABLE IF NOT EXISTS clouddata_projects(id SERIAL PRIMARY KEY,name VARCHAR(255) NOT NULL,token VARCHAR(64) NOT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
+            try:
+                await conn.execute("ALTER TABLE clouddata ADD COLUMN project_id INTEGER REFERENCES clouddata_projects(id) DEFAULT 1")
+                await conn.execute("ALTER TABLE clouddata ADD COLUMN name VARCHAR(255) DEFAULT ''")
+                await conn.execute("ALTER TABLE clouddata ADD COLUMN md5 VARCHAR(32) DEFAULT ''")
+            except: pass
+            try:
+                cnt = await conn.fetchval("SELECT COUNT(*) FROM clouddata_projects")
+                if cnt == 0:
+                    await conn.execute("INSERT INTO clouddata_projects (name,token) VALUES ($1,$2)", 'default', 'default_token')
+                    old_cnt = await conn.fetchval("SELECT COUNT(*) FROM clouddata")
+                    if old_cnt > 0:
+                        await conn.execute("UPDATE clouddata SET project_id = (SELECT id FROM clouddata_projects WHERE name='default')")
+                await conn.execute("UPDATE clouddata SET project_id = (SELECT id FROM clouddata_projects LIMIT 1) WHERE project_id IS NULL")
+            except: pass
+
     else:
         conn = sqlite3.connect('/data/files.db')
         conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id INTEGER PRIMARY KEY AUTOINCREMENT,k TEXT UNIQUE NOT NULL,v TEXT NOT NULL,t TEXT NOT NULL,read INTEGER NOT NULL DEFAULT 0read INTEGER NOT NULL DEFAULT 0))')
