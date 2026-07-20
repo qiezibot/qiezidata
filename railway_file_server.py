@@ -33,6 +33,8 @@ async def init_db():
             ucols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
             if 'role' not in [c['column_name'] for c in ucols]:
                 await conn.execute("ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'user'")
+                # 迁移后修正 admin 用户角色
+                await conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
             cols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='files'")
             if 'user_id' not in [c['column_name'] for c in cols]:
                 await conn.execute('ALTER TABLE files ADD COLUMN user_id INTEGER REFERENCES users(id)')
@@ -53,6 +55,7 @@ async def init_db():
         ucols = [r[1] for r in ucur.fetchall()]
         if 'role' not in ucols:
             conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+            conn.execute("UPDATE users SET role='admin' WHERE username='admin'")
         cur = conn.execute("PRAGMA table_info(files)")
         cols = [r[1] for r in cur.fetchall()]
         if 'user_id' not in cols:
