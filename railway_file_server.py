@@ -57,18 +57,22 @@ async def init_db():
             ucols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
             if 'role' not in [c['column_name'] for c in ucols]:
                 await conn.execute("ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'user'")
-            cols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='files'")
-            if 'user_id' not in [c['column_name'] for c in cols]:
-                await conn.execute('ALTER TABLE files ADD COLUMN user_id INTEGER REFERENCES users(id)')
-                admin = await conn.fetchrow("SELECT id FROM users WHERE username='admin'")
-                if not admin:
-                    h = _hash('admin123')
-                    await conn.execute("INSERT INTO users (username,password_hash,display_name,role) VALUES ($1,$2,$3,$4)", 'admin', h, 'Admin', 'admin')
-                    aid = await conn.fetchval("SELECT id FROM users WHERE username='admin'")
-                else: aid = admin['id']
-                await conn.execute('UPDATE files SET user_id = $1 WHERE user_id IS NULL', aid)
+            try:
+                cols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='files'")
+            except:
+                cols = []
             if not cols:
                 await conn.execute('CREATE TABLE IF NOT EXISTS files (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), filename VARCHAR(255) NOT NULL, original_name VARCHAR(255) NOT NULL, size BIGINT NOT NULL, mime_type VARCHAR(128), upload_time TIMESTAMP NOT NULL DEFAULT NOW(), file_path VARCHAR(512) NOT NULL)')
+            else:
+                if 'user_id' not in [c['column_name'] for c in cols]:
+                    await conn.execute('ALTER TABLE files ADD COLUMN user_id INTEGER REFERENCES users(id)')
+                    admin = await conn.fetchrow("SELECT id FROM users WHERE username='admin'")
+                    if not admin:
+                        h = _hash('admin123')
+                        await conn.execute("INSERT INTO users (username,password_hash,display_name,role) VALUES ($1,$2,$3,$4)", 'admin', h, 'Admin', 'admin')
+                        aid = await conn.fetchval("SELECT id FROM users WHERE username='admin'")
+                    else: aid = admin['id']
+                    await conn.execute('UPDATE files SET user_id = $1 WHERE user_id IS NULL', aid)
             # clouddata_projects
             await conn.execute('CREATE TABLE IF NOT EXISTS clouddata_projects(id SERIAL PRIMARY KEY,name VARCHAR(255) NOT NULL,token VARCHAR(64) NOT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
             try:
@@ -88,7 +92,7 @@ async def init_db():
 
     else:
         conn = sqlite3.connect('/data/files.db')
-        conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id INTEGER PRIMARY KEY AUTOINCREMENT,k TEXT UNIQUE NOT NULL,v TEXT NOT NULL,t TEXT NOT NULL,read INTEGER NOT NULL DEFAULT 0read INTEGER NOT NULL DEFAULT 0))')
+        conn.execute('CREATE TABLE IF NOT EXISTS clouddata(id INTEGER PRIMARY KEY AUTOINCREMENT,k TEXT UNIQUE NOT NULL,v TEXT NOT NULL,t TEXT NOT NULL,read INTEGER NOT NULL DEFAULT 0)')
         conn.execute('CREATE TABLE IF NOT EXISTS clouddata_projects(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,token TEXT NOT NULL,created_at TEXT NOT NULL)')
         try: conn.execute("ALTER TABLE clouddata ADD COLUMN project_id INTEGER DEFAULT 1")
         except: pass
@@ -497,7 +501,7 @@ function switchTab(n){document.querySelectorAll('.tab').forEach(function(t){t.cl
 function validateRegister(){var p1=document.getElementById('regPass').value;if(p1.length<4){document.getElementById('regError').textContent='密码太短';document.getElementById('regError').style.display='block';return false}return true}
 </script></body></html>"""
 
-_ADMIN = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理后台 - 茄子数据</title><style>
+_ADMIN = """\<<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理后台 - 茄子数据</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;color:#333;display:flex;min-height:100vh}
 .sidebar{width:220px;background:#fff;border-right:1px solid #e8e8e8;min-height:100vh;flex-shrink:0;display:flex;flex-direction:column}
@@ -641,6 +645,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 </div>
 </div></div>
 <div id="toast" class="toast"></div>
+
 <script>
 function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='upload')loadMyFiles();if(id==='users')loadUsers();if(id==='clouddata')initCloudData()}
 document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
@@ -671,49 +676,8 @@ function searchCD(){var pid=document.getElementById('cdpSelect').value;loadCloud
 function downloadCD(cid){window.open('/admin/cddata/download/'+cid)}
 function initCloudData(){var sel=document.getElementById('cdpSelect');if(!sel)return;sel.onchange=function(){var pid=this.value;if(!pid)return;var p=window.cdProjects.find(function(x){return x.id==pid});if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">重置TOKEN</button></td></tr>'}loadCloudDataStats(pid);loadCloudDataList(pid,1)};document.getElementById('cdQueryType').onchange=function(){var pid=sel.value;if(pid)loadCloudDataList(pid,1)};loadCloudDataProjects()}
 document.addEventListener('DOMContentLoaded',initCloudData);
-
-padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5}
-.header{background:#fff;padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e8e8e8}
-.header .logo{font-size:18px;font-weight:700;color:#667eea;text-decoration:none}
-.header .user-area{display:flex;align-items:center;gap:12px;font-size:14px;color:#666}
-.header .user-area a{color:#e74c3c;text-decoration:none;font-size:13px}
-.container{max-width:800px;margin:20px auto;padding:0 16px}
-.card{background:#fff;border-radius:10px;padding:20px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
-.card h2{font-size:16px;margin-bottom:14px;color:#444}
-.upload-zone{border:2px dashed #ccc;border-radius:10px;padding:32px;text-align:center;cursor:pointer;transition:all .2s}
-.upload-zone:hover{border-color:#667eea;background:#f8f9ff}
-.upload-icon{font-size:36px;margin-bottom:6px}
-progress{width:100%;height:6px;margin-top:10px;display:none}
-.file-list{list-style:none}
-.file-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0}
-.file-item:last-child{border-bottom:none}
-.file-info{flex:1}
-.file-name{font-size:14px;font-weight:500}
-.file-meta{font-size:12px;color:#999;margin-top:2px}
-.file-actions{display:flex;gap:6px}
-.file-actions a,.file-actions button{padding:4px 10px;font-size:12px;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#555;background:#fff;cursor:pointer}
-.file-actions a:hover{border-color:#667eea;color:#667eea}
-.file-actions button:hover{background:#fff5f5;border-color:#e74c3c;color:#e74c3c}
-.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;opacity:0;z-index:999}
-.toast.show{opacity:1}
-.toast.success{background:#27ae60}
-.toast.error{background:#e74c3c}
-</style></head><body>
-<div class="header"><a href="/" class="logo">茄子数据</a><div class="user-area"><span>&#x1f464; <!--U--></span><a href="/logout">退出</a></div></div>
-<div class="container">
-<div class="card"><h2>上传文件</h2><div class="upload-zone" id="dropZone"><div class="upload-icon">&#x1f4c1;</div><p style="color:#999">拖拽文件到此处或点击选择</p><input type="file" id="fileInput" style="display:none"></div><progress id="uploadProgress" max="100"></progress></div>
-<div class="card"><h2>我的文件</h2><div id="fileList"><p style="color:#999;text-align:center;padding:20px">暂无文件</p></div></div>
-</div>
-<div id="toast" class="toast"></div>
-<script>
-document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
-async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('上传成功','success');loadFiles()}catch(e){showToast('上传失败','error')}document.getElementById('uploadProgress').style.display='none'}
-async function loadFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">删除</button></div></li>'}h+='</ul>';document.getElementById('fileList').innerHTML=h}catch(e){}}
-
-async function addCloudData(){var k=document.getElementById('cdKey').value.trim();var v=document.getElementById('cdVal').value.trim();if(!k||!v)return;if(!confirm('确定添加 Key='+k+'?'))return;try{var r=await fetch('/admin/clouddata/add',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key:k,value:v})});if(r.ok){document.getElementById('cdKey').value='';document.getElementById('cdVal').value='';loadCloudData();showToast('添加成功','success')}else if(r.status===401)window.location.href='/'}catch(e){}}
-async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
-function showToast(m,t){var el=document.getElementById('toast');el.textContent=m;el.className='toast '+t+' show';setTimeout(function(){el.classList.remove('show')},3000)}loadFiles()</script></body></html>"""
+</script>
+</body></html>"""
 
 
 
@@ -905,5 +869,4 @@ if __name__ == '__main__':
 
 
 
-#   d e p l o y   0 7 / 2 1 / 2 0 2 6   0 3 : 2 7 : 3 8  
- 
+# deploy 07/21/2026 03:27:38
