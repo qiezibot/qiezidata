@@ -20,4 +20,5 @@ ENV PORT=8000
 
 EXPOSE 8000
 
+# 启动服务
 CMD ["python", "railway_file_server.py"]
