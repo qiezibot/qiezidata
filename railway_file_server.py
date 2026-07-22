@@ -122,6 +122,7 @@ PORT = int(os.environ.get('PORT', '8000'))
 
 
 
+# 鍥哄畾 SECRET_KEY锛岄伩鍏嶅鍣ㄩ噸鍚悗闇€閲嶆柊鐧诲綍
 SECRET_KEY = os.environ.get('SECRET_KEY', 'c3adc9837be6a1ad025450a8568e77bb19d3db42221875e2afa7d98c4706af2a')
 
 
@@ -218,7 +219,8 @@ async def init_db():
 
 
 
-            # ????????users ?????role ??
+            # 杩佺Щ锛氱粰鏃?users 琛ㄦ坊鍔?role 鍒?
+
 
 
             ucols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
@@ -425,7 +427,8 @@ async def init_db():
 
 
 
-        # ????????users ?????role ??
+        # 杩佺Щ锛氱粰鏃?users 琛ㄦ坊鍔?role 鍒?
+
 
 
         ucur = conn.execute("PRAGMA table_info(users)")
@@ -508,21 +511,6 @@ async def init_db():
 
 
 
-@app.post('/admin/user/{uid}/change_password')
-async def cpw_admin(uid: int, request: Request):
-    admin = await _user(_require(request))
-    if not admin or admin['role'] != 'admin':
-        return JSONResponse({'ok': False, 'detail': '无权限'})
-    data = await request.json()
-    np = data.get('new_password', '')
-    if not np or len(np) < 4:
-        return JSONResponse({'ok': False, 'detail': '密码需至少4个字符'})
-    if use_pg:
-        await db_execute('UPDATE users SET password_hash=$1 WHERE id=$2', _hash(np), uid)
-    else:
-        _DB[uid]['password_hash'] = _hash(np)
-    return JSONResponse({'ok': True, 'detail': '密码已修改'})
-
 @app.post('/admin/user/{uid}/set_admin')
 
 async def set_user_admin(uid: int, request: Request):
@@ -577,7 +565,7 @@ async def set_user_id(uid: int, new_id: int = Body(...), request: Request = None
 
 
 
-        return JSONResponse({'ok': False, 'detail': '?????}, status_code=403)
+        return JSONResponse({'ok': False, 'detail': '鏃犳潈闄?}, status_code=403)
 
 
 
@@ -601,7 +589,7 @@ async def set_user_id(uid: int, new_id: int = Body(...), request: Request = None
 
 
 
-            return JSONResponse({'ok': False, 'detail': '?????}, status_code=403)
+            return JSONResponse({'ok': False, 'detail': '鏃犳潈闄?}, status_code=403)
 
 
 
@@ -617,7 +605,7 @@ async def set_user_id(uid: int, new_id: int = Body(...), request: Request = None
 
 
 
-            return JSONResponse({'ok': False, 'detail': '????????}, status_code=404)
+            return JSONResponse({'ok': False, 'detail': '鐢ㄦ埛涓嶅瓨鍦?}, status_code=404)
 
 
 
@@ -645,7 +633,7 @@ async def set_user_id(uid: int, new_id: int = Body(...), request: Request = None
 
 
 
-        return JSONResponse({'ok': True, 'msg': f'???ID {uid} ?????{new_id}'})
+        return JSONResponse({'ok': True, 'msg': f'鐢ㄦ埛ID {uid} 宸叉敼涓?{new_id}'})
 
 
 
@@ -860,45 +848,27 @@ async def _user(uid):
 async def home(request: Request):
 
 
-
     uid = _auth(request)
-
 
 
     if uid is None: return HTMLResponse(_LOGIN)
 
 
-
     user = await _user(uid)
-
 
 
     if not user: return HTMLResponse(_LOGIN)
 
 
-
     name = user.get('display_name','') or user.get('username','')
 
 
-
-    if user.get('role') == 'admin':
-
-
-
-        return HTMLResponse(_ADMIN.replace('<!--U-->', name).replace('<!--R-->', user.get('role', '')))
-
-
-
-    return HTMLResponse(_ADMIN.replace('<!--U-->', name).replace('<!--R-->', user.get('role', '')))
-
-
-
-
-
-
-
-@app.post('/register')
-
+    admin_template = _ADMIN.replace('<!--U-->', name).replace('<!--R-->', user.get('role', ''))
+    try:
+        admin_template.encode('utf-8')
+    except UnicodeEncodeError:
+        admin_template = _ADMIN.encode('utf-8', errors='replace').decode('utf-8').replace('<!--U-->', name).replace('<!--R-->', user.get('role', ''))
+    return HTMLResponse(admin_template)
 
 
 async def register(username: str = Form(...), password: str = Form(...), display_name: str = Form(None)):
@@ -1035,6 +1005,157 @@ async def get_me(request: Request):
 
 
 
+
+
+@app.post('/me/change_password')
+
+
+async def change_my_password(request: Request):
+
+
+    uid = _require(request)
+
+
+    data = await request.json()
+
+
+    old_pw = data.get('old_password', '')
+    new_pw = data.get('new_password', '')
+
+
+    if not new_pw or len(new_pw) < 4:
+
+
+        return JSONResponse({'ok': False, 'detail': '鏂板瘑鐮佽嚦灏?涓瓧绗?})
+
+
+    if use_pg:
+
+
+        row = await db_fetchrow('SELECT password_hash FROM users WHERE id=$1', uid)
+
+
+    else:
+
+
+        row = await db_fetchrow('SELECT password_hash FROM users WHERE id=?', uid)
+
+
+    if not row or not _verify(old_pw, row['password_hash']):
+
+
+        return JSONResponse({'ok': False, 'detail': '鏃у瘑鐮侀敊璇?})
+
+
+    new_hash = _hash(new_pw)
+
+
+    if use_pg:
+
+
+        await db_execute('UPDATE users SET password_hash=$1 WHERE id=$2', new_hash, uid)
+
+
+    else:
+
+
+        await db_execute('UPDATE users SET password_hash=? WHERE id=?', new_hash, uid)
+
+
+    return JSONResponse({'ok': True})
+
+
+@app.post('/admin/user/{uid}/change_password')
+
+
+async def admin_change_user_password(uid: int, request: Request):
+
+
+    aid = _require(request); user = await _user(aid)
+
+
+    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
+
+    data = await request.json()
+
+
+    new_pw = data.get('new_password', '')
+
+
+    if not new_pw or len(new_pw) < 4:
+
+
+        return JSONResponse({'ok': False, 'detail': '鏂板瘑鐮佽嚦灏?涓瓧绗?})
+
+
+    if use_pg:
+
+
+        row = await db_fetchrow('SELECT id FROM users WHERE id=$1', uid)
+
+
+    else:
+
+
+        row = await db_fetchrow('SELECT id FROM users WHERE id=?', uid)
+
+
+    if not row:
+
+
+        return JSONResponse({'ok': False, 'detail': '鐢ㄦ埛涓嶅瓨鍦?})
+
+
+    new_hash = _hash(new_pw)
+
+
+    if use_pg:
+
+
+        await db_execute('UPDATE users SET password_hash=$1 WHERE id=$2', new_hash, uid)
+
+
+    else:
+
+
+        await db_execute('UPDATE users SET password_hash=? WHERE id=?', new_hash, uid)
+
+
+    return JSONResponse({'ok': True})
+
+
+@app.post('/me')
+
+
+async def update_me(request: Request):
+
+
+    uid = _require(request)
+
+
+    data = await request.json()
+
+
+    dn = data.get('display_name', '')
+
+
+    if dn:
+
+
+        if use_pg:
+
+
+            await db_execute('UPDATE users SET display_name=$1 WHERE id=$2', dn, uid)
+
+
+        else:
+
+
+            await db_execute('UPDATE users SET display_name=? WHERE id=?', dn, uid)
+
+
+    return JSONResponse({'ok': True})
 
 
 @app.post('/upload')
@@ -1373,7 +1494,7 @@ async def script_cd_upsert(request: Request):
 
 
 
-    b = await request.json(); k = b.get('??????','').strip(); v = b.get('???','').strip()
+    b = await request.json(); k = b.get('鏁版嵁鍚嶇О','').strip(); v = b.get('鏁版嵁','').strip()
 
 
 
@@ -1709,7 +1830,7 @@ async def clouddata_add(request: Request):
 
 
 
-    b = await request.json(); k = b.get('??????','').strip(); v = b.get('???','').strip(); pid = b.get('project_id')
+    b = await request.json(); k = b.get('鏁版嵁鍚嶇О','').strip(); v = b.get('鏁版嵁','').strip(); pid = b.get('project_id')
 
 
 
@@ -1909,7 +2030,7 @@ async def admin_delete_user(uid: int, request: Request):
 
 
 
-    if uid == aid: raise HTTPException(status_code=400, detail='?????????')
+    if uid == aid: raise HTTPException(status_code=400, detail='涓嶈兘鍒犻櫎鑷繁')
 
 
 
@@ -1917,11 +2038,11 @@ async def admin_delete_user(uid: int, request: Request):
 
 
 
-    if not target: raise HTTPException(status_code=404, detail='????????)
+    if not target: raise HTTPException(status_code=404, detail='鐢ㄦ埛涓嶅瓨鍦?)
 
 
 
-    # ????????????
+    # 鍒犻櫎璇ョ敤鎴风殑鏂囦欢
 
 
 
@@ -1945,7 +2066,7 @@ async def admin_delete_user(uid: int, request: Request):
 
 
 
-    # ??????
+    # 鍒犻櫎鐢ㄦ埛
 
 
 
@@ -1953,7 +2074,7 @@ async def admin_delete_user(uid: int, request: Request):
 
 
 
-    return {'ok': True, 'msg': f'??? {target["username"]} ?????}
+    return {'ok': True, 'msg': f'鐢ㄦ埛 {target["username"]} 宸插垹闄?}
 
 
 
@@ -2129,7 +2250,7 @@ async def exc_handler(request: Request, exc: Exception):
 
 
 
-_LOGIN = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>??????</title><style>
+_LOGIN = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>鑼勫瓙鏁版嵁</title><style>
 
 
 
@@ -2209,11 +2330,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
 
 
-<h1>??????</h1><p class="subtitle">?????? v2.1</p>
+<h1>鑼勫瓙鏁版嵁</h1><p class="subtitle">鏂囦欢绠＄悊 v2.1</p>
 
 
 
-<div class="tabs"><div class="tab active" onclick="switchTab('login')">???</div><div class="tab" onclick="switchTab('register')">???</div></div>
+<div class="tabs"><div class="tab active" onclick="switchTab('login')">鐧诲綍</div><div class="tab" onclick="switchTab('register')">娉ㄥ唽</div></div>
 
 
 
@@ -2221,19 +2342,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
 
 
-<form method="post" action="/login">
+<form autocomplete="off" novalidate autocomplete="off" method="post" action="/login">
 
 
 
-<div class="input-group"><label>?????/label><input type="text" name="username" placeholder="???????? required autofocus></div>
+<div class="input-group"><label>鐢ㄦ埛鍚?/label><input type="text" name="username" placeholder="杈撳叆鐢ㄦ埛鍚? required autofocus></div>
 
 
 
-<div class="input-group"><label>???</label><input type="password" name="password" placeholder="??????" required></div>
+<div class="input-group"><label>瀵嗙爜</label><input type="password" name="password" placeholder="杈撳叆瀵嗙爜" required></div>
 
 
 
-<button class="btn" type="submit">???</button>
+<button class="btn" type="submit">鐧诲綍</button>
 
 
 
@@ -2241,7 +2362,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
 
 
-<div class="msg" id="loginError">????????????</div>
+<div class="msg" id="loginError">鐢ㄦ埛鍚嶆垨瀵嗙爜閿欒</div>
 
 
 
@@ -2253,23 +2374,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
 
 
-<form method="post" action="/register" onsubmit="return validateRegister()">
+<form autocomplete="off" novalidate autocomplete="off" method="post" action="/register" onsubmit="return validateRegister()">
 
 
 
-<div class="input-group"><label>?????/label><input type="text" name="username" id="regUser" placeholder="2-20????? required minlength="2" maxlength="20" pattern="^[a-zA-Z0-9_]+$"></div>
+<div class="input-group"><label>鐢ㄦ埛鍚?/label><input type="text" name="username" id="regUser" placeholder="2-20涓瓧绗? required minlength="2" maxlength="20" pattern="^[a-zA-Z0-9_]+$"></div>
 
 
 
-<div class="input-group"><label>??????</label><input type="text" name="display_name" placeholder="???" maxlength="30"></div>
+<div class="input-group"><label>鏄剧ず鍚嶇О</label><input type="text" name="display_name" placeholder="閫夊～" maxlength="30"></div>
 
 
 
-<div class="input-group"><label>???</label><input type="password" name="password" id="regPass" placeholder="???4????? required minlength="4"></div>
+<div class="input-group"><label>瀵嗙爜</label><input type="password" name="password" id="regPass" placeholder="鑷冲皯4涓瓧绗? required minlength="4"></div>
 
 
 
-<button class="btn" type="submit">???</button>
+<button class="btn" type="submit">娉ㄥ唽</button>
 
 
 
@@ -2293,7 +2414,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
 
 
-var p=new URLSearchParams(window.location.search);if(p.get('e')==='1')document.getElementById('loginError').style.display='block';if(p.get('reg')==='1'){document.getElementById('loginError').textContent='????????????';document.getElementById('loginError').className='msg success';document.getElementById('loginError').style.display='block'}
+var p=new URLSearchParams(window.location.search);if(p.get('e')==='1')document.getElementById('loginError').style.display='block';if(p.get('reg')==='1'){document.getElementById('loginError').textContent='娉ㄥ唽鎴愬姛锛岃鐧诲綍';document.getElementById('loginError').className='msg success';document.getElementById('loginError').style.display='block'}
 
 
 
@@ -2301,13 +2422,34 @@ function switchTab(n){document.querySelectorAll('.tab').forEach(function(t){t.cl
 
 
 
-function validateRegister(){var p1=document.getElementById('regPass').value;if(p1.length<4){document.getElementById('regError').textContent='??????';document.getElementById('regError').style.display='block';return false}return true}
+function validateRegister(){var p1=document.getElementById('regPass').value;if(p1.length<4){document.getElementById('regError').textContent='瀵嗙爜澶煭';document.getElementById('regError').style.display='block';return false}return true}
 
 
 
 </script><script>
 (function(){var r=document.body.dataset.role||'';if(r!='admin'){document.querySelectorAll('.nav-item').forEach(function(n){if(n.getAttribute('onclick')&&n.getAttribute('onclick').indexOf('users')>=0)n.style.display='none'});}})();
 </script>
+<script>
+document.addEventListener("DOMContentLoaded",function(){
+  var els=document.querySelectorAll("[onclick*='openProfile']");
+  for(var i=0;i<els.length;i++){
+    els[i].addEventListener("click",function(e){
+      e.preventDefault();
+      var m=document.getElementById("profileModal");
+      if(m){m.style.display="flex";}
+      fetch("/me",{credentials:"include"}).then(function(r){return r.json();}).then(function(u){
+        var i1=document.getElementById("profModalUser");if(i1)i1.value=u.username||"";
+        var i2=document.getElementById("profModalDN");if(i2)i2.value=u.display_name||"";
+        var i3=document.getElementById("profModalRole");if(i3)i3.value=u.role||"";
+      }).catch(function(){});
+    });
+  }
+});
+</script>
+
+document.addEventListener('DOMContentLoaded',function(){var f=document.querySelector('form');if(f)f.reset();setTimeout(function(){var inputs=f.querySelectorAll('input');for(var i=0;i<inputs.length;i++)inputs[i].removeAttribute('readonly')},100)})
+
+
 </body></html>"""
 
 
@@ -2316,7 +2458,7 @@ function validateRegister(){var p1=document.getElementById('regPass').value;if(p
 
 
 
-_ADMIN = """\<<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>?????? - ??????</title><style>
+_ADMIN = """\<<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>绠＄悊鍚庡彴 - 鑼勫瓙鏁版嵁</title><style>
 
 
 
@@ -2509,6 +2651,57 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 </style></head><body>
+<div id="profileModalDummy" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center">
+<div style="background:#fff;border-radius:12px;padding:24px;width:420px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h3 style="margin:0;font-size:16px;color:#333">淇敼璧勬枡</h3><button onclick="closeProfile()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">&times;</button>
+</div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鐢ㄦ埛鍚?/label><input id="profModalUser" type="text" disabled style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;background:#f9f9f9"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏄剧ず鍚嶇О</label><input id="profModalDN" type="text" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="杈撳叆鏄剧ず鍚嶇О"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">瑙掕壊</label><input id="profModalRole" type="text" disabled style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;background:#f9f9f9"></div>
+<button onclick="saveProfileModal()" style="padding:10px 24px;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;margin-top:4px">淇濆瓨</button>
+<p id="profModalSaveMsg" style="font-size:13px;margin-top:8px;display:none"></p>
+<hr style="margin:16px 0;border:none;border-top:1px solid #eee">
+<h4 style="margin:0 0 12px 0;font-size:14px;color:#333">淇敼瀵嗙爜</h4>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏃у瘑鐮?/label><input id="profModalOldPwd" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="杈撳叆褰撳墠瀵嗙爜"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏂板瘑鐮?/label><input id="profModalNewPwd" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="鑷冲皯4涓瓧绗?></div>
+<div class="input-group" style="margin-bottom:16px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">纭鏂板瘑鐮?/label><input id="profModalNewPwd2" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="鍐嶆杈撳叆鏂板瘑鐮?></div>
+<button onclick="submitProfilePwdModal()" style="padding:10px 24px;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">淇敼瀵嗙爜</button>
+<p id="profModalPwdMsg" style="font-size:13px;margin-top:8px;display:none"></p>
+</div>
+</div>
+<div id="profileModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center">
+<div style="background:#fff;border-radius:12px;padding:24px;width:420px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h3 style="margin:0;font-size:16px;color:#333">淇敼璧勬枡</h3><button onclick="closeProfile()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">&times;</button>
+</div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鐢ㄦ埛鍚?/label><input id="profModalUser" type="text" disabled style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;background:#f9f9f9"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏄剧ず鍚嶇О</label><input id="profModalDN" type="text" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="杈撳叆鏄剧ず鍚嶇О"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">瑙掕壊</label><input id="profModalRole" type="text" disabled style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;background:#f9f9f9"></div>
+<button onclick="saveProfileModal()" style="padding:10px 24px;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;margin-top:4px">淇濆瓨</button>
+<p id="profModalSaveMsg" style="font-size:13px;margin-top:8px;display:none"></p>
+<hr style="margin:16px 0;border:none;border-top:1px solid #eee">
+<h4 style="margin:0 0 12px 0;font-size:14px;color:#333">淇敼瀵嗙爜</h4>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏃у瘑鐮?/label><input id="profModalOldPwd" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="杈撳叆褰撳墠瀵嗙爜"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏂板瘑鐮?/label><input id="profModalNewPwd" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="鑷冲皯4涓瓧绗?></div>
+<div class="input-group" style="margin-bottom:16px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">纭鏂板瘑鐮?/label><input id="profModalNewPwd2" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="鍐嶆杈撳叆鏂板瘑鐮?></div>
+<button onclick="submitProfilePwdModal()" style="padding:10px 24px;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">淇敼瀵嗙爜</button>
+<p id="profModalPwdMsg" style="font-size:13px;margin-top:8px;display:none"></p>
+</div>
+</div>
+<div id="pwdModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center">
+<div style="background:#fff;border-radius:12px;padding:24px;width:380px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h3 id="pwdModalTitle" style="margin:0;font-size:16px;color:#333">淇敼瀵嗙爜</h3><button onclick="closePwdModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">&times;</button>
+</div>
+<p style="font-size:13px;color:#555;margin-bottom:12px">涓虹敤鎴疯缃柊瀵嗙爜</p>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏂板瘑鐮?/label><input id="pwdNewInput" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="鑷冲皯4涓瓧绗?></div>
+<div class="input-group" style="margin-bottom:16px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">纭鏂板瘑鐮?/label><input id="pwdConfirmInput" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="鍐嶆杈撳叆鏂板瘑鐮?></div>
+<button id="pwdModalBtn" onclick="submitPwdModal()" style="padding:10px 24px;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">纭淇敼</button>
+<p id="pwdModalMsg" style="font-size:13px;margin-top:8px;display:none"></p>
+</div>
+</div>
+
 
 
 
@@ -2516,31 +2709,31 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<span class="logo">??????</span>
+<span class="logo">鑼勫瓙鏁版嵁</span>
 
 
 
-<div class="nav-item active" onclick="switchPage('dashboard',this)"><span class="icon">&#x1f4ca;</span>?????/div>
+<div class="nav-item active" onclick="switchPage('dashboard',this)"><span class="icon">&#x1f4ca;</span>浠〃鐩?/div>
 
 
 
-<div class="nav-item" onclick="switchPage('files',this)"><span class="icon">&#x1f4c1;</span>??????</div>
+<div class="nav-item" onclick="switchPage('files',this)"><span class="icon">&#x1f4c1;</span>鏂囦欢绠＄悊</div>
 
 
 
-<div class="nav-item" onclick="switchPage('upload',this)"><span class="icon">&#x1f4e4;</span>???</div>
+<div class="nav-item" onclick="switchPage('upload',this)"><span class="icon">&#x1f4e4;</span>涓婁紶</div>
 
 
 
-<div class="nav-item" onclick="switchPage('users',this)"><span class="icon">&#x1f465;</span>??????</div>
+<div class="nav-item" onclick="switchPage('users',this)"><span class="icon">&#x1f465;</span>鐢ㄦ埛绠＄悊</div>
 
 
 
-<div class="nav-item" onclick="switchPage('clouddata',this)"><span class="icon">&#x2601;</span>?????/div>
+<div class="nav-item" onclick="switchPage('clouddata',this)"><span class="icon">&#x2601;</span>浜戞暟鎹?/div>
 
 
 
-<div class="nav-item" onclick="switchPage('apidocs',this)"><span class="icon">??</span>API???</div>
+<div class="nav-item" onclick="switchPage('apidocs',this)"><span class="icon">&#x1f4d6;</span>API鏂囨。</div>
 
 
 
@@ -2548,7 +2741,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<div class="nav-bottom"><span>&#x1f464; <!--U--></span> &middot; <a href="/logout">???????/a></div>
+<div class="nav-bottom"><a onclick="openProfile()" style="cursor:pointer">&#x1f464; <!--U--></a> &middot; <a href="/logout">閫€鍑虹櫥褰?/a></div>
 
 
 
@@ -2560,7 +2753,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<div class="header"><span class="title">??????</span><span class="user-area">&#x1f464; <!--U--></span></div>
+<div class="header"><span class="title">绠＄悊鍚庡彴</span><span class="user-area"><a onclick="openProfile()" style="cursor:pointer;color:inherit;text-decoration:none">&#x1f464; <!--U--></a></span></div>
 
 
 
@@ -2576,19 +2769,19 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<div class="stat-card"><div class="num" id="statUsers">-</div><div class="label">?????/div></div>
+<div class="stat-card"><div class="num" id="statUsers">-</div><div class="label">鐢ㄦ埛鏁?/div></div>
 
 
 
-<div class="stat-card"><div class="num" id="statFiles">-</div><div class="label">?????/div></div>
+<div class="stat-card"><div class="num" id="statFiles">-</div><div class="label">鏂囦欢鏁?/div></div>
 
 
 
-<div class="stat-card"><div class="num" id="statSize">-</div><div class="label">?????/div></div>
+<div class="stat-card"><div class="num" id="statSize">-</div><div class="label">瀛樺偍閲?/div></div>
 
 
 
-<div class="stat-card"><div class="num" id="statAdmin">-</div><div class="label">?????/div></div>
+<div class="stat-card"><div class="num" id="statAdmin">-</div><div class="label">绠＄悊鍛?/div></div>
 
 
 
@@ -2604,7 +2797,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<div class="card"><h2>??????</h2><div id="fileList"><p style="color:#999;text-align:center;padding:20px">??????</p></div></div>
+<div class="card"><h2>鍏ㄩ儴鏂囦欢</h2><div id="fileList"><p style="color:#999;text-align:center;padding:20px">鏆傛棤鏂囦欢</p></div></div>
 
 
 
@@ -2616,11 +2809,11 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<div class="card"><h2>??????</h2><div class="upload-zone" id="dropZone"><div class="upload-icon">&#x1f4c1;</div><p style="color:#999">??????????????????</p><input type="file" id="fileInput" style="display:none"></div><progress id="uploadProgress" max="100"></progress></div>
+<div class="card"><h2>涓婁紶鏂囦欢</h2><div class="upload-zone" id="dropZone"><div class="upload-icon">&#x1f4c1;</div><p style="color:#999">鎷栨嫿鏂囦欢鍒版澶勬垨鐐瑰嚮閫夋嫨</p><input type="file" id="fileInput" style="display:none"></div><progress id="uploadProgress" max="100"></progress></div>
 
 
 
-<div class="card"><h2>??????</h2><div id="myFileList"><p style="color:#999;text-align:center;padding:20px">??????</p></div></div>
+<div class="card"><h2>鎴戠殑鏂囦欢</h2><div id="myFileList"><p style="color:#999;text-align:center;padding:20px">鏆傛棤鏂囦欢</p></div></div>
 
 
 
@@ -2632,7 +2825,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<div class="card"><h2>??????</h2><table class="user-table"><thead><tr><th>ID</th><th>?????/th><th>??????</th><th>???</th><th>??????</th><th>???</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
+<div class="card"><h2>鐢ㄦ埛鍒楄〃</h2><table class="user-table"><thead><tr><th>ID</th><th>鐢ㄦ埛鍚?/th><th>鏄剧ず鍚嶇О</th><th>瑙掕壊</th><th>鍒涘缓鏃堕棿</th><th>鎿嶄綔</th><th>淇敼瀵嗙爜</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
 
 
 
@@ -2652,7 +2845,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<span style="font-size:18px">?????????:</span>
+<span style="font-size:18px">閫夋嫨鏁版嵁鍚嶇О:</span>
 
 
 
@@ -2660,15 +2853,15 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<button onclick="createProject()" class="btn btn-info" style="margin:0 5px">???????????/button>
+<button onclick="createProject()" class="btn btn-info" style="margin:0 5px">鍒涘缓浜戞暟鎹」鐩?/button>
 
 
 
-<button onclick="deleteProject()" class="btn btn-danger">????????????</button>
+<button onclick="deleteProject()" class="btn btn-danger">鍒犻櫎褰撳墠閫夋嫨椤圭洰</button>
 
 
 
-<button onclick="resetAllRead(document.getElementById('cdpSelect').value)" class="btn btn-success" style="margin:0 5px">???????????????????/button>
+<button onclick="resetAllRead(document.getElementById('cdpSelect').value)" class="btn btn-success" style="margin:0 5px">璁剧疆鍏ㄩ儴鏁版嵁鐘舵€佷负鏈鍙?/button>
 
 
 
@@ -2680,19 +2873,19 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<span style="font-size:16px">???:</span><span id="cdTotal" style="font-size:17px;font-weight:bold">0</span>
+<span style="font-size:16px">鎬绘暟:</span><span id="cdTotal" style="font-size:17px;font-weight:bold">0</span>
 
 
 
-<span style="font-size:16px;margin-left:15px">?????</span><span id="cdNoRead" style="font-size:17px;font-weight:bold;color:orange">0</span>
+<span style="font-size:16px;margin-left:15px">鏈鍙?</span><span id="cdNoRead" style="font-size:17px;font-weight:bold;color:orange">0</span>
 
 
 
-<span style="font-size:16px;margin-left:15px">?????</span><span id="cdRead" style="font-size:17px;font-weight:bold;color:green">0</span>
+<span style="font-size:16px;margin-left:15px">宸茶鍙?</span><span id="cdRead" style="font-size:17px;font-weight:bold;color:green">0</span>
 
 
 
-<button onclick="loadCloudDataStats(document.getElementById('cdpSelect').value)" class="btn btn-info" style="margin-left:10px">???</button>
+<button onclick="loadCloudDataStats(document.getElementById('cdpSelect').value)" class="btn btn-info" style="margin-left:10px">鍒锋柊</button>
 
 
 
@@ -2708,7 +2901,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<thead><tr><th>???ID</th><th>??????</th><th>???Token</th><th>?????????</th><th>??????</th></tr></thead>
+<thead><tr><th>椤圭洰ID</th><th>椤圭洰鍚嶇О</th><th>璁块棶Token</th><th>椤圭洰鍒涘缓鏃堕棿</th><th>鎿嶄綔鍛戒护</th></tr></thead>
 
 
 
@@ -2744,7 +2937,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<span style="font-size:18px">??????????</span>
+<span style="font-size:18px">閫夋嫨鏁版嵁鐘舵€?</span>
 
 
 
@@ -2752,15 +2945,15 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<option value="-1">???????/option>
+<option value="-1">鎵€鏈夋暟鎹?/option>
 
 
 
-<option value="0">?????????</option>
+<option value="0">鏈鍙栫殑鏁版嵁</option>
 
 
 
-<option value="1">?????????</option>
+<option value="1">宸茶鍙栫殑鏁版嵁</option>
 
 
 
@@ -2768,15 +2961,15 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<button onclick="exportCD('all')" class="btn btn-success">??????????/button>
+<button onclick="exportCD('all')" class="btn btn-success">瀵煎嚭鎵€鏈夋暟鎹?/button>
 
 
 
-<button onclick="exportCD('unread')" class="btn btn-success">??????????????</button>
+<button onclick="exportCD('unread')" class="btn btn-success">瀵煎嚭鎵€鏈夋湭璇诲彇鏁版嵁</button>
 
 
 
-<button onclick="exportCD('read')" class="btn btn-success">??????????????</button>
+<button onclick="exportCD('read')" class="btn btn-success">瀵煎嚭鎵€鏈夊凡璇诲彇鏁版嵁</button>
 
 
 
@@ -2784,7 +2977,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<button class="btn btn-danger dropdown-toggle" onclick="var m=this.nextElementSibling;m.style.display=m.style.display=='none'?'block':'none'">?????? &#9660;</button>
+<button class="btn btn-danger dropdown-toggle" onclick="var m=this.nextElementSibling;m.style.display=m.style.display=='none'?'block':'none'">鍒犻櫎鏁版嵁 &#9660;</button>
 
 
 
@@ -2792,15 +2985,15 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<li><a href="#" onclick="batchDelete('all');return false" style="color:#333">??????????/a></li>
+<li><a href="#" onclick="batchDelete('all');return false" style="color:#333">鍒犻櫎鎵€鏈夋暟鎹?/a></li>
 
 
 
-<li><a href="#" onclick="batchDelete('read');return false" style="color:#333">??????????????</a></li>
+<li><a href="#" onclick="batchDelete('read');return false" style="color:#333">鍒犻櫎鎵€鏈夊凡璇诲彇鏁版嵁</a></li>
 
 
 
-<li><a href="#" onclick="batchDelete('unread');return false" style="color:#333">??????????????</a></li>
+<li><a href="#" onclick="batchDelete('unread');return false" style="color:#333">鍒犻櫎鎵€鏈夋湭璇诲彇鏁版嵁</a></li>
 
 
 
@@ -2812,11 +3005,11 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<input id="cdSearchText" type="text" style="width:300px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc;margin-left:10px" placeholder="???????????????" onkeydown="if(event.keyCode==13)searchCD()">
+<input id="cdSearchText" type="text" style="width:300px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc;margin-left:10px" placeholder="杈撳叆鏁版嵁鍚嶅瓧鎼滅储鏁版嵁" onkeydown="if(event.keyCode==13)searchCD()">
 
 
 
-<button onclick="searchCD()" class="btn btn-info" style="margin-left:5px">??</button>
+<button onclick="searchCD()" class="btn btn-info" style="margin-left:5px">&#x1f50d;</button>
 
 
 
@@ -2828,7 +3021,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<div style="margin-bottom:8px;font-size:16px;font-weight:bold">??????</div>
+<div style="margin-bottom:8px;font-size:16px;font-weight:bold">涓婁紶鏁版嵁</div>
 
 
 
@@ -2836,11 +3029,11 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<span style="font-size:14px">??????:</span>
+<span style="font-size:14px">鏁版嵁鍚嶇О:</span>
 
 
 
-<input id="cdUploadKey" type="text" style="width:200px;padding:4px;border-radius:4px;border:1px solid #ccc" placeholder="?????????">
+<input id="cdUploadKey" type="text" style="width:200px;padding:4px;border-radius:4px;border:1px solid #ccc" placeholder="杈撳叆鏁版嵁鍚嶇О">
 
 
 
@@ -2848,7 +3041,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<button onclick="uploadTextFile()" class="btn btn-primary" style="background:#2196F3;color:#fff">???</button>
+<button onclick="uploadTextFile()" class="btn btn-primary" style="background:#2196F3;color:#fff">涓婁紶</button>
 
 
 
@@ -2872,7 +3065,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<thead><tr><th>Id</th><th>??????</th><th>???</th><th>???MD5</th><th>??????</th><th>????/th><th>??????</th></tr></thead>
+<thead><tr><th>Id</th><th>鏁版嵁鍚嶇О</th><th>鏁版嵁</th><th>鏁版嵁MD5</th><th>鏇存柊鏃堕棿</th><th>鐘舵€?/th><th>鏁版嵁鎿嶄綔</th></tr></thead>
 
 
 
@@ -2936,85 +3129,85 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 <div class="card" style="background:#e8f4fd;padding:15px">
 
-<h3 style="margin-top:0">?? API ??????</h3>
+<h3 style="margin-top:0">&#x1f4d6; API 瀵规帴鏂囨。</h3>
 
-<p style="color:#666;font-size:14px">????????????????????????????????? Access Token??/p>
+<p style="color:#666;font-size:14px">浠ヤ笅鎺ュ彛渚涚涓夋柟寮€鍙戣€呭鎺ヤ娇鐢紝闇€瑕佸厛鑾峰彇 Access Token銆?/p>
 
 
 
-<h4 style="margin:15px 0 5px">1. ?????????</h4>
+<h4 style="margin:15px 0 5px">1. 鑾峰彇鏁版嵁鍒楄〃</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
 
 <strong>GET</strong> /api/cddata/{project_id}?token={token}&amp;queryType=0<br>
 
-<span style="color:#999">?????roject_id=???ID, token=???Token, queryType=0???/1???/-1???</span>
+<span style="color:#999">鍙傛暟锛歱roject_id=椤圭洰ID, token=椤圭洰Token, queryType=0鏈/1宸茶/-1鍏ㄩ儴</span>
 
 </div>
 
 
 
-<h4 style="margin:15px 0 5px">2. ?????????</h4>
+<h4 style="margin:15px 0 5px">2. 鑾峰彇鍗曟潯鏁版嵁</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
 
 <strong>GET</strong> /api/cddata/{data_id}?token={token}<br>
 
-<span style="color:#999">????????????????????????</span>
+<span style="color:#999">杩斿洖璇ユ潯鏁版嵁鐨勫師濮嬪唴瀹癸紙绾枃鏈級</span>
 
 </div>
 
 
 
-<h4 style="margin:15px 0 5px">3. ??????</h4>
+<h4 style="margin:15px 0 5px">3. 涓婁紶鏁版嵁</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
 
 <strong>POST</strong> /api/cddata/{project_id}?token={token}<br>
 
-<span style="color:#999">Body (JSON): {"??????": "xxx", "???": "xxx"}</span>
+<span style="color:#999">Body (JSON): {"鏁版嵁鍚嶇О": "xxx", "鏁版嵁": "xxx"}</span>
 
 </div>
 
 
 
-<h4 style="margin:15px 0 5px">4. ????????????????????????</h4>
+<h4 style="margin:15px 0 5px">4. 鑾峰彇绗竴鏉℃湭璇绘暟鎹紙鑷姩鏍囧凡璇伙級</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
 
 <strong>GET</strong> /api/cddata/{project_id}/fetchone?token={token}<br>
 
-<span style="color:#999">??????????????????????d?????????????????????????/span>
+<span style="color:#999">鍙栬椤圭洰涓嬬涓€鏉℃湭璇绘暟鎹紙鎸塱d鍗囧簭锛夛紝杩斿洖鍐呭鍚庤嚜鍔ㄦ爣涓哄凡璇汇€?/span>
 
 </div>
 
 
 
-<h4 style="margin:15px 0 5px">5. ??????????/h4>
+<h4 style="margin:15px 0 5px">5. 鏍囪鏁版嵁鐘舵€?/h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
 
 <strong>POST</strong> /api/cddata/state/{data_id}?token={token}<br>
 
-<span style="color:#999">?????????????????????/span>
+<span style="color:#999">鍒囨崲璇ユ潯鏁版嵁鐨勫凡璇?鏈鐘舵€?/span>
 
 </div>
 
 
 
-<h4 style="margin:15px 0 5px">6. ????????????????????/h4>
+<h4 style="margin:15px 0 5px">6. 鍒犻櫎绗竴鏉℃暟鎹紙鍗崇敤鍗冲垹锛?/h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
 
 <strong>GET</strong> /api/cddata/{project_id}/popfirst?token={token}<br>
 
-<span style="color:#999">???????????????????????d??????????????????????????????????/span>
+<span style="color:#999">杩斿洖璇ラ」鐩笅绗竴鏉℃湭璇绘暟鎹紙鎸塱d鍗囧簭锛夛紝杩斿洖鍚庣洿鎺ュ垹闄わ紝閫傚悎闃熷垪寮忔秷鎭鐞嗐€?/span>
 
 </div>
 
 
 
-<h4 style="margin:15px 0 5px">7. ??????</h4>
+<h4 style="margin:15px 0 5px">7. 鍒犻櫎鏁版嵁</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
 
@@ -3026,30 +3219,30 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 <br>
 
-<h4 style="color:#e74c3c">??? Token</h4>
+<h4 style="color:#e74c3c">鑾峰彇 Token</h4>
 
-<p style="font-size:13px;color:#666">???????????????????????????????????Token??br>
+<p style="font-size:13px;color:#666">鍦ㄤ簯鏁版嵁椤甸潰鍒涘缓椤圭洰鍚庯紝椤圭洰璇︽儏涓細鏄剧ず瀵瑰簲鐨?Token銆?br>
 
-Token ?????????????????/p>
-
-
-
-<h4 style="margin:15px 0 5px">?? API ???</h4>
-
-<p style="font-size:13px;color:#666">???????????a href="https://qiezidata-production.up.railway.app" target="_blank">https://qiezidata-production.up.railway.app</a></p>
-
-<p style="font-size:13px;color:#999">????API ??????????????????/p>
+Token 鐢ㄤ簬閴存潈锛岃濡ュ杽淇濈銆?/p>
 
 
 
-<h4 style="margin:15px 0 5px">?? ????????????</h4>
-<p style="font-size:13px;color:#666;margin:5px 0 10px">???????????? <code>httpGet</code> / <code>httpPost</code> API (?????</p>
+<h4 style="margin:15px 0 5px">&#x1f517; API 鍦板潃</h4>
+
+<p style="font-size:13px;color:#666">褰撳墠绾夸笂鍦板潃锛?a href="https://qiezidata-production.up.railway.app" target="_blank">https://qiezidata-production.up.railway.app</a></p>
+
+<p style="font-size:13px;color:#999">鎵€鏈?API 璇峰湪姝ゅ熀纭€鍩熷悕涓婃嫾鎺ャ€?/p>
+
+
+
+<h4 style="margin:15px 0 5px">&#x1f916; 鎳掍汉绮剧伒璋冪敤绀轰緥</h4>
+<p style="font-size:13px;color:#666;margin:5px 0 10px">鍩轰簬鎳掍汉绮剧伒瀹樻柟 <code>httpGet</code> / <code>httpPost</code> API (瀹夊崜绔?</p>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace;white-space:pre-wrap">
 
 -- ==============================<br>
--- ???????????? (GET)<br>
--- queryType=0=???, queryType=-1=???<br>
+-- 鑾峰彇鏈鏁版嵁鍒楄〃 (GET)<br>
+-- queryType=0=鏈, queryType=-1=鍏ㄩ儴<br>
 -- ==============================<br><br>
 
 local url = "https://qiezidata-production.up.railway.app/api/cddata/2?token=xxx&amp;queryType=0"<br><br>
@@ -3058,12 +3251,12 @@ local ret, code = httpGet(url, 30)<br>
 traceprint(ret)<br><br>
 
 -- ==============================<br>
--- ?????? (POST)<br>
--- Body ???: ?????? / ???<br>
+-- 涓婁紶鏁版嵁 (POST)<br>
+-- Body 瀛楁: 鏁版嵁鍚嶇О / 鏁版嵁<br>
 -- ==============================<br><br>
 
 local url = "https://qiezidata-production.up.railway.app/api/cddata/2?token=xxx"<br>
-local body = '{"??????":"test","???":"hello"}'<br>
+local body = '{"鏁版嵁鍚嶇О":"test","鏁版嵁":"hello"}'<br>
 local headers = {}<br>
 headers["Content-Type"] = "application/json"<br><br>
 
@@ -3071,8 +3264,8 @@ local ret, code = httpPost(url, body, 30, headers)<br>
 traceprint(ret)<br><br>
 
 -- ==============================<br>
--- ????????? (GET)<br>
--- {data_id} ???????????D<br>
+-- 鑾峰彇鍗曟潯鏁版嵁 (GET)<br>
+-- {data_id} 鏇挎崲涓哄疄闄呮暟鎹甀D<br>
 -- ==============================<br><br>
 
 local url = "https://qiezidata-production.up.railway.app/api/cddata/123?token=xxx"<br><br>
@@ -3081,7 +3274,7 @@ local ret, code = httpGet(url, 30)<br>
 traceprint(ret)<br><br>
 
 -- ==============================<br>
--- ????????????????(GET)<br>
+-- 鍙栫涓€鏉℃湭璇诲苟鏍囧凡璇?(GET)<br>
 -- ==============================<br><br>
 
 local url = "https://qiezidata-production.up.railway.app/api/cddata/2/fetchone?token=xxx"<br><br>
@@ -3090,7 +3283,7 @@ local ret, code = httpGet(url, 30)<br>
 traceprint(ret)<br><br>
 
 -- ==============================<br>
--- ?????????????? (??????) (GET)<br>
+-- 鍙栫涓€鏉℃湭璇诲苟鍒犻櫎 (闃熷垪妯″紡) (GET)<br>
 -- ==============================<br><br>
 
 local url = "https://qiezidata-production.up.railway.app/api/cddata/2/popfirst?token=xxx"<br><br>
@@ -3099,22 +3292,22 @@ local ret, code = httpGet(url, 30)<br>
 traceprint(ret)<br><br>
 
 -- ==============================<br>
--- ??? JSON ??????<br>
+-- 澶勭悊 JSON 杩斿洖缁撴灉<br>
 -- ==============================<br><br>
 
 local ret, code = httpGet(url, 30)<br>
 if code == 200 then<br>
 &nbsp;&nbsp;&nbsp;&nbsp;local tb = jsonLib.decode(ret)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;traceprint("??????: " .. tb.data.??????)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;traceprint("??????: " .. tb.data.???)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;traceprint("鏁版嵁鍚嶇О: " .. tb.data.鏁版嵁鍚嶇О)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;traceprint("鏁版嵁鍐呭: " .. tb.data.鏁版嵁)<br>
 end<br><br>
 
 -- ==============================<br>
--- ?????? (?????????)<br>
+-- 寮傛璇锋眰 (涓嶉樆濉炰富绾跨▼)<br>
 -- ==============================<br><br>
 
 function callback(ret, code)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;traceprint("??????: " .. ret)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;traceprint("鏀跺埌鏁版嵁: " .. ret)<br>
 end<br><br>
 
 asynHttpGet(callback, url, 30)<br>
@@ -3139,15 +3332,15 @@ function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(functi
 
 
 
-document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
+var z=document.getElementById('dropZone');if(z)z.addEventListener('click',function(){var fi=document.getElementById('fileInput');if(fi)fi.click()});var fi=document.getElementById('fileInput');if(fi)fi.addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
 
 
 
-document.getElementById('fileList').addEventListener('click',function(e){var btn=e.target.closest('.af-del');if(!btn)return;var fid=btn.dataset.fid;var fname=btn.dataset.fname;if(!confirm('???????????+fname+'?????))return;fetch('/admin/file/'+fid,{method:'DELETE',credentials:'include'}).then(function(r){if(!r.ok)throw Error();loadAllFiles();alert('????????)}).catch(function(){alert('??????')})})
+document.getElementById('fileList').addEventListener('click',function(e){var btn=e.target.closest('.af-del');if(!btn)return;var fid=btn.dataset.fid;var fname=btn.dataset.fname;if(!confirm('纭鍒犻櫎鏂囦欢銆?+fname+'銆嶅悧锛?))return;fetch('/admin/file/'+fid,{method:'DELETE',credentials:'include'}).then(function(r){if(!r.ok)throw Error();loadAllFiles();alert('鏂囦欢宸插垹闄?)}).catch(function(){alert('鍒犻櫎澶辫触')})})
 
 
 
-document.getElementById('myFileList').addEventListener('click',function(e){var btn=e.target.closest('.af-del');if(!btn)return;var fid=btn.dataset.fid;var fname=btn.dataset.fname;if(!confirm('???????????+fname+'?????))return;fetch('/admin/file/'+fid,{method:'DELETE',credentials:'include'}).then(function(r){if(!r.ok)throw Error();loadMyFiles();alert('????????)}).catch(function(){alert('??????')})})
+document.getElementById('myFileList').addEventListener('click',function(e){var btn=e.target.closest('.af-del');if(!btn)return;var fid=btn.dataset.fid;var fname=btn.dataset.fname;if(!confirm('纭鍒犻櫎鏂囦欢銆?+fname+'銆嶅悧锛?))return;fetch('/admin/file/'+fid,{method:'DELETE',credentials:'include'}).then(function(r){if(!r.ok)throw Error();loadMyFiles();alert('鏂囦欢宸插垹闄?)}).catch(function(){alert('鍒犻櫎澶辫触')})})
 
 
 
@@ -3159,7 +3352,7 @@ document.getElementById('myFileList').addEventListener('click',function(e){var b
 
 
 
-async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('??????','success');loadMyFiles()}catch(e){showToast('??????','error')}document.getElementById('uploadProgress').style.display='none'}
+async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('涓婁紶鎴愬姛','success');loadMyFiles()}catch(e){showToast('涓婁紶澶辫触','error')}document.getElementById('uploadProgress').style.display='none'}
 
 
 
@@ -3167,37 +3360,27 @@ async function loadDashboard(){try{var r=await fetch('/admin/stats',{credentials
 
 
 
-async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">??????</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B | '+f.owner+'</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>???</a><button class=\"af-del\" data-fid=\"' + f.id + '\" data-fname=\"'+f.original_name+'\">\u5220\u9664</button></div></li>'}h+='</ul>';document.getElementById('fileList').innerHTML=h}catch(e){}}
+async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">鏆傛棤鏂囦欢</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B | '+f.owner+'</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>涓嬭浇</a><button class=\"af-del\" data-fid=\"' + f.id + '\" data-fname=\"'+f.original_name+'\">\u5220\u9664</button></div></li>'}h+='</ul>';document.getElementById('fileList').innerHTML=h}catch(e){}}
 
 
 
-function cpwUser(uid){var np=prompt('新密码(>4位)');if(!np||np.length<4){if(np)alert('需>=4字符');return}fetch('/admin/user/'+uid+'/change_password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_password:np}),credentials:'include'}).then(function(r){return r.json()}).then(function(d){alert(d.detail||'成功');loadUsers()})}
-
-async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'<span style="color:green">????????/span>':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">???</button><button data-uid="'+u.id+'" data-uname="'+u.username+'" class="set-admin-btn" style="margin-left:5px">????????/button>')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
+async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'<span style="color:green">宸叉槸绠＄悊鍛?/span>':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">鍒犻櫎</button><button data-uid="'+u.id+'" data-uname="'+u.username+'" class="set-admin-btn" style="margin-left:5px">璁句负绠＄悊鍛?/button>')+'</td>'+'<td><button onclick="openPwdModal('+u.id+')" style="padding:4px 10px;font-size:12px;border:1px solid #ddd;border-radius:6px;color:#555;background:#fff;cursor:pointer">淇敼瀵嗙爜</button></td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
 
 
 
-document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.del-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));var uname=btn.getAttribute('data-uname');if(confirm('???????????'+uname+' ?????????????'))deleteUser(uid)})
+document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.del-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));var uname=btn.getAttribute('data-uname');if(confirm('纭畾瑕佸垹闄ょ敤鎴?'+uname+' 鍚?姝ゆ搷浣滀笉鍙仮澶?'))deleteUser(uid)})
 
 
 
-document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.set-admin-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));var uname=btn.getAttribute('data-uname');if(confirm('????????'+uname+' ??????????')){fetch('/admin/user/'+uid+'/set_admin',{method:'POST',credentials:'include'}).then(function(r){if(r.ok){alert('?????????');loadUsers()}else{r.json().then(function(d){alert(d.detail||'??????')})}}).catch(function(){alert('??????')})}})
+document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.set-admin-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));var uname=btn.getAttribute('data-uname');if(confirm('纭畾灏嗙敤鎴?'+uname+' 璁句负绠＄悊鍛樺悧?')){fetch('/admin/user/'+uid+'/set_admin',{method:'POST',credentials:'include'}).then(function(r){if(r.ok){alert('宸茶涓虹鐞嗗憳');loadUsers()}else{r.json().then(function(d){alert(d.detail||'璁剧疆澶辫触')})}}).catch(function(){alert('璇锋眰澶辫触')})}})
 
 
 
-async function deleteUser(uid){try{var r=await fetch('/admin/user/'+uid,{method:'DELETE',credentials:'include'});if(r.ok){var r2=await fetch('/admin/users',{credentials:'include'});if(r2.status===401){window.location.href='/';return}var users=await r2.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'-':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">???</button>'+<button onclick="cpwUser('+u.id+')" style="margin-left:5px;cursor:pointer">改密码</button>+''+<button onclick="cpwUser('+u.id+')" style="margin-left:5px;cursor:pointer">改密码</button>+'')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}else{var e=await r.json();alert(e.detail||'??????')}}catch(e){alert('??????')}}async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">??????</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>\u4e0b\u8f7d</a><button class=\"af-del\" data-fid=\"' + f.id + '\" data-fname=\"'+f.original_name+'\">\u5220\u9664</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
+async function deleteUser(uid){try{var r=await fetch('/admin/user/'+uid,{method:'DELETE',credentials:'include'});if(r.ok){var r2=await fetch('/admin/users',{credentials:'include'});if(r2.status===401){window.location.href='/';return}var users=await r2.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'-':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">鍒犻櫎</button>')+'</td>'+'<td><button onclick="openPwdModal('+u.id+')" style="padding:4px 10px;font-size:12px;border:1px solid #ddd;border-radius:6px;color:#555;background:#fff;cursor:pointer">淇敼瀵嗙爜</button></td></tr>'}document.getElementById('userTableBody').innerHTML=h}else{var e=await r.json();alert(e.detail||'鍒犻櫎澶辫触')}}catch(e){alert('鍒犻櫎澶辫触')}}async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">鏆傛棤鏂囦欢</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>\u4e0b\u8f7d</a><button class=\"af-del\" data-fid=\"' + f.id + '\" data-fname=\"'+f.original_name+'\">\u5220\u9664</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
 
 
 
-async function delFile(id){if(!confirm('????????))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('??????','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
-
-
-
-
-
-
-
-async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'???',read:'?????,unread:'?????};if(!confirm('??????'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
+async function delFile(id){if(!confirm('纭畾鍒犻櫎锛?))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('鍒犻櫎鎴愬姛','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
 
 
 
@@ -3205,8 +3388,15 @@ async function exportCD(mode){var pid=document.getElementById('cdpSelect').value
 
 
 
-async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'???',read:'?????,unread:'?????};if(!confirm('??????'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
+async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'鍏ㄩ儴',read:'宸茶鍙?,unread:'鏈鍙?};if(!confirm('纭畾瀵煎嚭'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
 
+
+
+
+
+
+
+async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'鍏ㄩ儴',read:'宸茶鍙?,unread:'鏈鍙?};if(!confirm('纭畾瀵煎嚭'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
 
 
 
@@ -3217,7 +3407,8 @@ async function exportCD(mode){var pid=document.getElementById('cdpSelect').value
 
 
 
-function loadCloudDataProjects(){fetch('/admin/cdprojects',{credentials:'include'}).then(function(r){return r.json()}).then(function(ps){window.cdProjects=ps;var sel=document.getElementById('cdpSelect');if(!sel)return;sel.innerHTML='';for(var i=0;i<ps.length;i++){var o=document.createElement('option');o.value=ps[i].id;o.text='ID:'+ps[i].id+' '+ps[i].name;sel.appendChild(o)}var p=ps[0];if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">???TOKEN</button></td></tr>';loadCloudDataStats(p.id);loadCloudDataList(p.id,1)}})}
+
+function loadCloudDataProjects(){fetch('/admin/cdprojects',{credentials:'include'}).then(function(r){return r.json()}).then(function(ps){window.cdProjects=ps;var sel=document.getElementById('cdpSelect');if(!sel)return;sel.innerHTML='';for(var i=0;i<ps.length;i++){var o=document.createElement('option');o.value=ps[i].id;o.text='ID:'+ps[i].id+' '+ps[i].name;sel.appendChild(o)}var p=ps[0];if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">閲嶇疆TOKEN</button></td></tr>';loadCloudDataStats(p.id);loadCloudDataList(p.id,1)}})}
 
 
 
@@ -3225,7 +3416,7 @@ function loadCloudDataStats(pid){fetch('/admin/cdprojects/stats/'+pid,{credentia
 
 
 
-function loadCloudDataList(pid,page){var q=document.getElementById('cdQueryType').value;var s=document.getElementById('cdSearchText').value;var u='/admin/cddata/'+pid+'?page='+page+'&limit=20&queryType='+q+(s?'&search='+encodeURIComponent(s):'');fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){var tb=document.getElementById('cdDataBody');if(!tb)return;tb.innerHTML='';for(var i=0;i<d.items.length;i++){var x=d.items[i];var st=x.read?'?????:'?????;var sc=st==='??????'green':'orange';var btnT=x.read?'?????????':'?????????';tb.innerHTML+='<tr><td>'+x.id+'</td><td>'+x.name+'</td><td><a href=\"#\" onclick=\"downloadCD('+x.id+');return false\">(??????)</a></td><td>'+x.md5+'</td><td>'+(x.t||'')+'</td><td><span style=\"color:'+sc+'\">'+st+'</span></td><td><button onclick=\"toggleCDState('+x.id+')\" class=\"mybtn btn btn-danger\">'+btnT+'</button> <button onclick=\"if(confirm("???????"))deleteCD('+x.id+')\" class=\"mybtn btn btn-danger\">??????</button></td></tr>'}window.cdPage=page;window.cdTotal=d.total;var pn=Math.ceil(d.total/20)||1;var ph='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+',1);return false\">???</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.max(1,page-1)+');return false\">?????/a></li>';for(var i=1;i<=pn;i++){ph+='<li class=\"'+(i===page?'active':'')+'\"><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+i+');return false\">'+i+'</a></li>'}ph+='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.min(pn,page+1)+');return false\">?????/a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+pn+');return false\">???</a></li>';document.getElementById('cdPagination').innerHTML=ph})}
+function loadCloudDataList(pid,page){var q=document.getElementById('cdQueryType').value;var s=document.getElementById('cdSearchText').value;var u='/admin/cddata/'+pid+'?page='+page+'&limit=20&queryType='+q+(s?'&search='+encodeURIComponent(s):'');fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){var tb=document.getElementById('cdDataBody');if(!tb)return;tb.innerHTML='';for(var i=0;i<d.items.length;i++){var x=d.items[i];var st=x.read?'宸茶鍙?:'鏈鍙?;var sc=st==='宸茶鍙??'green':'orange';var btnT=x.read?'淇敼涓烘湭璇诲彇':'淇敼涓哄凡璇诲彇';tb.innerHTML+='<tr><td>'+x.id+'</td><td>'+x.name+'</td><td><a href=\"#\" onclick=\"downloadCD('+x.id+');return false\">(鐐瑰嚮涓嬭浇)</a></td><td>'+x.md5+'</td><td>'+(x.t||'')+'</td><td><span style=\"color:'+sc+'\">'+st+'</span></td><td><button onclick=\"toggleCDState('+x.id+')\" class=\"mybtn btn btn-danger\">'+btnT+'</button> <button onclick=\"if(confirm("纭畾鍒犻櫎?"))deleteCD('+x.id+')\" class=\"mybtn btn btn-danger\">鍒犻櫎鏁版嵁</button></td></tr>'}window.cdPage=page;window.cdTotal=d.total;var pn=Math.ceil(d.total/20)||1;var ph='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+',1);return false\">棣栭〉</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.max(1,page-1)+');return false\">涓婁竴椤?/a></li>';for(var i=1;i<=pn;i++){ph+='<li class=\"'+(i===page?'active':'')+'\"><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+i+');return false\">'+i+'</a></li>'}ph+='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.min(pn,page+1)+');return false\">涓嬩竴椤?/a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+pn+');return false\">灏鹃〉</a></li>';document.getElementById('cdPagination').innerHTML=ph})}
 
 
 
@@ -3237,31 +3428,31 @@ function deleteCD(cid){var pid=document.getElementById('cdpSelect').value;fetch(
 
 
 
-function uploadTextFile(){var key=document.getElementById('cdUploadKey').value.trim();var fileInput=document.getElementById('cdUploadFile');if(!fileInput.files||!fileInput.files[0]){alert('????????');return}if(!key)key=fileInput.files[0].name.replace(/\.[^.]+$/,'');var pid=document.getElementById('cdpSelect').value;if(!pid){alert('?????????');return}var reader=new FileReader();reader.onload=function(e){var val=e.target.result;fetch('/admin/clouddata/add',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key:key,value:val,project_id:parseInt(pid)})}).then(function(r){if(r.ok){document.getElementById('cdUploadStatus').textContent='??????: '+key;document.getElementById('cdUploadKey').value='';fileInput.value='';loadCloudDataList(pid,1)}else{alert('??????')}}).catch(function(){alert('??????')})};reader.readAsText(fileInput.files[0])}
+function uploadTextFile(){var key=document.getElementById('cdUploadKey').value.trim();var fileInput=document.getElementById('cdUploadFile');if(!fileInput.files||!fileInput.files[0]){alert('璇烽€夋嫨鏂囦欢');return}if(!key)key=fileInput.files[0].name.replace(/\.[^.]+$/,'');var pid=document.getElementById('cdpSelect').value;if(!pid){alert('璇峰厛閫夋嫨椤圭洰');return}var reader=new FileReader();reader.onload=function(e){var val=e.target.result;fetch('/admin/clouddata/add',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key:key,value:val,project_id:parseInt(pid)})}).then(function(r){if(r.ok){document.getElementById('cdUploadStatus').textContent='涓婁紶鎴愬姛: '+key;document.getElementById('cdUploadKey').value='';fileInput.value='';loadCloudDataList(pid,1)}else{alert('涓婁紶澶辫触')}}).catch(function(){alert('涓婁紶澶辫触')})};reader.readAsText(fileInput.files[0])}
 
 
 
-function resetToken(pid){if(!confirm('??????Token?????????????'))return;fetch('/admin/cdprojects/resettoken/'+pid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){document.getElementById('cdpToken_'+pid).textContent=d.token;showToast('??????','success')}})}
+function resetToken(pid){if(!confirm('閲嶇疆鍚庢棫Token澶辨晥锛岀‘瀹氶噸缃悧?'))return;fetch('/admin/cdprojects/resettoken/'+pid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){document.getElementById('cdpToken_'+pid).textContent=d.token;showToast('閲嶇疆鎴愬姛','success')}})}
 
 
 
-function resetAllRead(pid){if(!confirm('???????????????????'))return;fetch('/admin/cdprojects/resetallread/'+pid,{method:'POST',credentials:'include'}).then(function(){loadCloudDataStats(pid);loadCloudDataList(pid,1)})}
+function resetAllRead(pid){if(!confirm('纭畾灏嗘墍鏈夋暟鎹涓烘湭璇诲彇?'))return;fetch('/admin/cdprojects/resetallread/'+pid,{method:'POST',credentials:'include'}).then(function(){loadCloudDataStats(pid);loadCloudDataList(pid,1)})}
 
 
 
-function createProject(){var n=prompt('?????ey??????:');if(!n)return;fetch('/admin/cdprojects',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({name:n})}).then(function(){loadCloudDataProjects();showToast('??????','success')})}
+function createProject(){var n=prompt('璇疯緭鍏ey鏍囪瘑绗︾О:');if(!n)return;fetch('/admin/cdprojects',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({name:n})}).then(function(){loadCloudDataProjects();showToast('鍒涘缓鎴愬姛','success')})}
 
 
 
-function deleteProject(){var pid=document.getElementById('cdpSelect').value;if(!confirm('??????????????????????????'))return;fetch('/admin/cdprojects/'+pid,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataProjects();showToast('??????','success')})}
+function deleteProject(){var pid=document.getElementById('cdpSelect').value;if(!confirm('鍒犻櫎椤圭洰浼氭竻绌烘墍鏈夋暟鎹紝纭畾鍒犻櫎鍚?'))return;fetch('/admin/cdprojects/'+pid,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataProjects();showToast('鍒犻櫎鎴愬姛','success')})}
 
 
 
-function exportCD(m){var pid=document.getElementById('cdpSelect').value;var t={all:'???',read:'?????,unread:'?????};if(!confirm('??????'+t[m]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+m)}
+function exportCD(m){var pid=document.getElementById('cdpSelect').value;var t={all:'鍏ㄩ儴',read:'宸茶鍙?,unread:'鏈鍙?};if(!confirm('纭畾瀵煎嚭'+t[m]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+m)}
 
 
 
-function batchDelete(m){var pid=document.getElementById('cdpSelect').value;var t={all:'??????',read:'????????,unread:'????????};if(!confirm('??????'+t[m]+'?'))return;fetch('/admin/cddata/batch/'+pid+'?mode='+m,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataList(pid,1);loadCloudDataStats(pid);showToast('??????','success')})}
+function batchDelete(m){var pid=document.getElementById('cdpSelect').value;var t={all:'鍏ㄩ儴鏁版嵁',read:'宸茶鍙栨暟鎹?,unread:'鏈鍙栨暟鎹?};if(!confirm('纭畾鍒犻櫎'+t[m]+'?'))return;fetch('/admin/cddata/batch/'+pid+'?mode='+m,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataList(pid,1);loadCloudDataStats(pid);showToast('鍒犻櫎鎴愬姛','success')})}
 
 
 
@@ -3273,7 +3464,7 @@ function downloadCD(cid){window.open('/admin/cddata/download/'+cid)}
 
 
 
-function initCloudData(){var sel=document.getElementById('cdpSelect');if(!sel)return;sel.onchange=function(){var pid=this.value;if(!pid)return;var p=window.cdProjects.find(function(x){return x.id==pid});if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">???TOKEN</button></td></tr>'}loadCloudDataStats(pid);loadCloudDataList(pid,1)};document.getElementById('cdQueryType').onchange=function(){var pid=sel.value;if(pid)loadCloudDataList(pid,1)};loadCloudDataProjects()}
+function initCloudData(){var sel=document.getElementById('cdpSelect');if(!sel)return;sel.onchange=function(){var pid=this.value;if(!pid)return;var p=window.cdProjects.find(function(x){return x.id==pid});if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">閲嶇疆TOKEN</button></td></tr>'}loadCloudDataStats(pid);loadCloudDataList(pid,1)};document.getElementById('cdQueryType').onchange=function(){var pid=sel.value;if(pid)loadCloudDataList(pid,1)};loadCloudDataProjects()}
 
 
 
@@ -3286,9 +3477,42 @@ document.addEventListener('DOMContentLoaded',initCloudData);
 
 
 <div id="role-indicator" data-role="<!--R-->" style="display:none"></div>
+
+<script>
+var pwdModalTargetUid = null;
+function openPwdModal(uid){ var uname=''; var tbl=document.getElementById('userTableBody'); if(tbl){ var btns=tbl.querySelectorAll('[data-uid]'); for(var b=0;b<btns.length;b++){ if(btns[b].getAttribute('data-uid')==''+uid){ uname=btns[b].getAttribute('data-uname')||''; break; } } } pwdModalTargetUid=uid; document.getElementById('pwdModalTitle').textContent='\u4fee\u6539\u5bc6\u7801 - '+(uname||'#'+uid); document.getElementById('pwdNewInput').value=''; document.getElementById('pwdConfirmInput').value=''; document.getElementById('pwdModalMsg').style.display='none'; document.getElementById('pwdModal').style.display='flex'; }
+function closePwdModal(){ document.getElementById('pwdModal').style.display='none'; pwdModalTargetUid=null; }
+function submitPwdModal(){ var np=document.getElementById('pwdNewInput').value; var cp=document.getElementById('pwdConfirmInput').value; var msg=document.getElementById('pwdModalMsg'); if(np.length<4){ msg.textContent='\u5bc6\u7801\u81f3\u5c114\u4e2a\u5b57\u7b26'; msg.style.display='block'; return; } if(np!==cp){ msg.textContent='\u4e24\u6b21\u8f93\u5165\u7684\u5bc6\u7801\u4e0d\u4e00\u81f4'; msg.style.display='block'; return; } document.getElementById('pwdModalBtn').disabled=true; document.getElementById('pwdModalBtn').textContent='\u63d0\u4ea4\u4e2d...'; fetch('/admin/user/'+pwdModalTargetUid+'/change_password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_password:np})}).then(function(r){return r.json();}).then(function(d){if(d.ok){alert('\u5bc6\u7801\u5df2\u4fee\u6539');closePwdModal();}else{msg.textContent=d.detail||'\u4fee\u6539\u5931\u8d25';msg.style.display='block';}}).catch(function(){msg.textContent='\u8bf7\u6c42\u5931\u8d25';msg.style.display='block';}).finally(function(){document.getElementById('pwdModalBtn').disabled=false;document.getElementById('pwdModalBtn').textContent='\u786e\u8ba4\u4fee\u6539';}); }
+function openProfile(){ var m=document.getElementById('profileModal');if(!m)return alert('profileModal not found');m.style.display='flex';m.style.visibility='visible';m.style.opacity='1';m.style.zIndex='9999';try{m.showModal()}catch(e){}fetch('/me',{credentials:'include'}).then(function(r){return r.json();}).then(function(u){var userInp=document.getElementById('profModalUser');var dnInp=document.getElementById('profModalDN');var roleInp=document.getElementById('profModalRole');if(userInp)userInp.value=u.username||'';if(dnInp)dnInp.value=u.display_name||'';if(roleInp)roleInp.value=u.role||'';}).catch(function(){})}
+function closeProfile(){ document.getElementById('profileModal').style.display='none'; }
+function saveProfileModal(){ var dn=document.getElementById('profModalDN').value.trim(); var msg=document.getElementById('profModalSaveMsg'); msg.style.display='none'; fetch('/me',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({display_name:dn})}).then(function(r){return r.json();}).then(function(d){if(d.ok){msg.textContent='\u5df2\u4fdd\u5b58';msg.style.color='#27ae60';document.querySelector('[class*=\"user-area\"]').textContent='\ud83d\udc64 '+(dn||'');}else{msg.textContent=d.detail||'\u4fdd\u5b58\u5931\u8d25';msg.style.color='#e74c3c';}msg.style.display='block';setTimeout(function(){msg.style.display='none';},3000);}).catch(function(){msg.textContent='\u8bf7\u6c42\u5931\u8d25';msg.style.color='#e74c3c';msg.style.display='block';}); }
+function submitProfilePwdModal(){ var oldP=document.getElementById('profModalOldPwd').value; var newP=document.getElementById('profModalNewPwd').value; var newP2=document.getElementById('profModalNewPwd2').value; var msg=document.getElementById('profModalPwdMsg'); msg.style.display='none'; if(!oldP){msg.textContent='\u8bf7\u8f93\u5165\u65e7\u5bc6\u7801';msg.style.display='block';return;} if(newP.length<4){msg.textContent='\u65b0\u5bc6\u7801\u81f3\u5c114\u4e2a\u5b57\u7b26';msg.style.display='block';return;} if(newP!==newP2){msg.textContent='\u4e24\u6b21\u8f93\u5165\u7684\u5bc6\u7801\u4e0d\u4e00\u81f4';msg.style.display='block';return;} fetch('/me/change_password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_password:oldP,new_password:newP})}).then(function(r){return r.json();}).then(function(d){if(d.ok){msg.textContent='\u5bc6\u7801\u5df2\u4fee\u6539';msg.style.color='#27ae60';document.getElementById('profModalOldPwd').value='';document.getElementById('profModalNewPwd').value='';document.getElementById('profModalNewPwd2').value='';}else{msg.textContent=d.detail||'\u4fee\u6539\u5931\u8d25';msg.style.color='#e74c3c';}msg.style.display='block';setTimeout(function(){msg.style.display='none';},3000);}).catch(function(){msg.textContent='\u8bf7\u6c42\u5931\u8d25';msg.style.color='#e74c3c';msg.style.display='block';}); }
+</script>
 <script>
 (function(){var e=document.getElementById("role-indicator");var r=e?e.dataset.role:"";if(r!="admin"){document.querySelectorAll('[onclick*="dashboard"],[onclick*="users"]').forEach(function(n){n.style.display="none"});}})();
 </script>
+
+
+
+<div id="profileModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center">
+<div style="background:#fff;border-radius:12px;padding:24px;width:420px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h3 style="margin:0;font-size:16px;color:#333">淇敼璧勬枡</h3><button onclick="closeProfile()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#999">&times;</button>
+</div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鐢ㄦ埛鍚?/label><input id="profModalUser" type="text" disabled style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;background:#f9f9f9"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏄剧ず鍚嶇О</label><input id="profModalDN" type="text" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="杈撳叆鏄剧ず鍚嶇О"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">瑙掕壊</label><input id="profModalRole" type="text" disabled style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;background:#f9f9f9"></div>
+<button onclick="saveProfileModal()" style="padding:10px 24px;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;margin-top:4px">淇濆瓨</button>
+<p id="profModalSaveMsg" style="font-size:13px;margin-top:8px;display:none"></p>
+<hr style="margin:16px 0;border:none;border-top:1px solid #eee">
+<h4 style="margin:0 0 12px 0;font-size:14px;color:#333">淇敼瀵嗙爜</h4>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏃у瘑鐮?/label><input id="profModalOldPwd" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="杈撳叆褰撳墠瀵嗙爜"></div>
+<div class="input-group" style="margin-bottom:12px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">鏂板瘑鐮?/label><input id="profModalNewPwd" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="鑷冲皯4涓瓧绗?></div>
+<div class="input-group" style="margin-bottom:16px"><label style="display:block;font-size:13px;color:#555;margin-bottom:4px">纭鏂板瘑鐮?/label><input id="profModalNewPwd2" type="password" style="width:100%;padding:10px 12px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none" placeholder="鍐嶆杈撳叆鏂板瘑鐮?></div>
+<button onclick="submitProfilePwdModal()" style="padding:10px 24px;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">淇敼瀵嗙爜</button>
+<p id="profModalPwdMsg" style="font-size:13px;margin-top:8px;display:none"></p>
+</div>
+</div>
 </body></html>"""
 
 
@@ -3797,7 +4021,7 @@ async def api_get_cddata(request: Request, data_id: int):
 
 async def api_post_cddata(project_id: int, request: Request):
 
-    b = await request.json(); k = b.get('??????','').strip(); v = b.get('???','').strip()
+    b = await request.json(); k = b.get('鏁版嵁鍚嶇О','').strip(); v = b.get('鏁版嵁','').strip()
 
     token = request.query_params.get('token','')
 
@@ -4181,7 +4405,7 @@ async def cddata_export(request: Request, pid: int, mode: str):
 
 
 
-    writer.writerow(['ID','??????','???','Name','MD5','??????','????])
+    writer.writerow(['ID','鏁版嵁鍚嶇О','鏁版嵁','Name','MD5','鏇存柊鏃堕棿','鐘舵€?])
 
 
 
@@ -4189,7 +4413,7 @@ async def cddata_export(request: Request, pid: int, mode: str):
 
 
 
-        writer.writerow([row['id'],row['k'],row['v'],row.get('name',''),row.get('md5',''),row['t'],'???' if row['read'] else '???'])
+        writer.writerow([row['id'],row['k'],row['v'],row.get('name',''),row.get('md5',''),row['t'],'宸茶' if row['read'] else '鏈'])
 
 
 
