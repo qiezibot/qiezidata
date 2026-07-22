@@ -102,6 +102,10 @@ from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, Red
 
 
 
+
+
+
+
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 
@@ -130,6 +134,10 @@ app = FastAPI(title='Eggplant Data (Railway)', version='2.1')
 
 
 
+
+
+
+
 # ===== Database =====
 
 
@@ -143,6 +151,10 @@ db_pool = None
 
 
 import asyncio
+
+
+
+
 
 
 
@@ -195,6 +207,10 @@ async def init_db():
 
 
             except: pass
+
+
+
+
 
 
 
@@ -346,6 +362,10 @@ async def init_db():
 
 
 
+
+
+
+
     else:
 
 
@@ -386,11 +406,19 @@ async def init_db():
 
 
 
+
+
+
+
         try: conn.execute('ALTER TABLE clouddata ADD COLUMN read INTEGER NOT NULL DEFAULT 0')
 
 
 
         except: pass
+
+
+
+
 
 
 
@@ -471,6 +499,14 @@ async def init_db():
 
 
         conn.commit(); conn.close()
+
+
+
+
+
+
+
+
 
 
 
@@ -600,11 +636,23 @@ async def set_user_id(uid: int, new_id: int = Body(...), request: Request = None
 
 
 
+
+
+
+
+
+
+
+
 @app.on_event('startup')
 
 
 
 async def startup(): await init_db()
+
+
+
+
 
 
 
@@ -700,6 +748,10 @@ async def db_fetchval(sql, *params):
 
 
 
+
+
+
+
 AUTH_COOKIE = 'eggplant_token'
 
 
@@ -780,6 +832,10 @@ async def _user(uid):
 
 
 
+
+
+
+
 # ===== Routes =====
 
 
@@ -821,6 +877,10 @@ async def home(request: Request):
 
 
     return HTMLResponse(_ADMIN.replace('<!--U-->', name).replace('<!--R-->', user.get('role', '')))
+
+
+
+
 
 
 
@@ -872,6 +932,10 @@ async def register(username: str = Form(...), password: str = Form(...), display
 
 
 
+
+
+
+
 @app.post('/login')
 
 
@@ -908,6 +972,10 @@ async def login(username: str = Form(...), password: str = Form(...)):
 
 
 
+
+
+
+
 @app.get('/logout')
 
 
@@ -928,6 +996,10 @@ async def logout():
 
 
 
+
+
+
+
 @app.get('/me')
 
 
@@ -945,6 +1017,12 @@ async def get_me(request: Request):
 
 
     return user
+
+
+
+
+
+
 
 
 
@@ -1067,6 +1145,10 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
 
 
 
+
+
+
+
 @app.get('/files')
 
 
@@ -1087,11 +1169,19 @@ async def list_files(request: Request):
 
 
 
+
+
+
+
 def _get_file(uid, fid):
 
 
 
     return db_fetchrow('SELECT * FROM files WHERE id=$1 AND user_id=$2' if use_pg else 'SELECT * FROM files WHERE id=? AND user_id=?', fid, uid)
+
+
+
+
 
 
 
@@ -1124,6 +1214,10 @@ async def download_file(request: Request, fid: int):
 
 
     return FileResponse(path=row['file_path'], filename=row['original_name'], media_type=row['mime_type'])
+
+
+
+
 
 
 
@@ -1219,6 +1313,10 @@ async def script_cd_export(mode: str, request: Request):
 
 
 
+
+
+
+
 @app.post('/clouddata/mark/{key}')
 
 
@@ -1251,6 +1349,10 @@ async def script_cd_mark(key: str, request: Request, read: bool = True):
 
 
 
+
+
+
+
 @app.post('/clouddata/mark/id/{cid}')
 
 
@@ -1280,6 +1382,18 @@ async def script_cd_mark_id(cid: int, request: Request, read: bool = True):
 
 
     return {'ok': True, 'id': cid, 'read': read}
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1323,6 +1437,10 @@ async def script_cd_upsert(request: Request):
 
 
 
+
+
+
+
 @app.get('/clouddata')
 
 
@@ -1363,6 +1481,10 @@ async def script_cd_list(request: Request, key: str = None):
 
 
 
+
+
+
+
 @app.get('/clouddata/{key}')
 
 
@@ -1384,6 +1506,10 @@ async def script_cd_get(key: str, request: Request):
 
 
     return {'key':r['k'],'value':r['v'],'time':str(r['t']),'read':r['read']}
+
+
+
+
 
 
 
@@ -1416,6 +1542,10 @@ async def script_cd_delete(key: str, request: Request):
 
 
     return {'ok': True, 'key': key}
+
+
+
+
 
 
 
@@ -1467,6 +1597,10 @@ async def read_file(request: Request, fid: int):
 
 
 
+
+
+
+
 @app.delete('/delete/{fid}')
 
 
@@ -1500,6 +1634,10 @@ async def delete_file(request: Request, fid: int):
 
 
     return {'message': 'ok'}
+
+
+
+
 
 
 
@@ -1551,6 +1689,10 @@ async def admin_delete_file(request: Request, fid: int):
 
 
 
+
+
+
+
 @app.get('/admin/clouddata')
 
 
@@ -1580,6 +1722,10 @@ async def clouddata_list(request: Request):
 
 
         return await db_fetch('SELECT id,k,v,t,read FROM clouddata ORDER BY id DESC')
+
+
+
+
 
 
 
@@ -1667,6 +1813,10 @@ async def clouddata_add(request: Request):
 
 
 
+
+
+
+
 @app.delete('/admin/clouddata/{cid}')
 
 
@@ -1700,6 +1850,10 @@ async def clouddata_del(cid: int, request: Request):
 
 
     return {'ok': True}
+
+
+
+
 
 
 
@@ -1743,6 +1897,10 @@ async def admin_stats(request: Request):
 
 
 
+
+
+
+
 @app.get('/admin/users')
 
 
@@ -1764,6 +1922,10 @@ async def admin_users(request: Request):
 
 
     return [dict(r) for r in rows]
+
+
+
+
 
 
 
@@ -1831,6 +1993,10 @@ async def admin_delete_user(uid: int, request: Request):
 
 
 
+
+
+
+
 @app.get('/admin/files')
 
 
@@ -1855,6 +2021,10 @@ async def admin_files(request: Request):
 
 
 
+
+
+
+
 @app.get('/debug')
 
 
@@ -1876,6 +2046,10 @@ async def debug():
 
 
     u = await db_fetch('SELECT username, id FROM users LIMIT 5')
+
+
+
+    
 
 
 
@@ -1927,6 +2101,10 @@ async def debug():
 
 
 
+    
+
+
+
     return {'_LOGIN_len': len(str(_LOGIN)),
 
 
@@ -1959,6 +2137,10 @@ async def debug():
 
 
 
+
+
+
+
 @app.exception_handler(Exception)
 
 
@@ -1972,6 +2154,10 @@ async def exc_handler(request: Request, exc: Exception):
 
 
     return JSONResponse(status_code=getattr(exc,'status_code',500), content={'detail': str(exc.detail if hasattr(exc,'detail') else exc)})
+
+
+
+
 
 
 
@@ -2162,463 +2348,624 @@ function validateRegister(){var p1=document.getElementById('regPass').value;if(p
 
 
 
+
+
+
+
 _ADMIN = """\<<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理后台 - 茄子数据</title><style>
+
 
 
 *{margin:0;padding:0;box-sizing:border-box}
 
 
+
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;color:#333;display:flex;min-height:100vh}
+
 
 
 .sidebar{width:220px;background:#fff;border-right:1px solid #e8e8e8;min-height:100vh;flex-shrink:0;display:flex;flex-direction:column}
 
 
+
 .sidebar .logo{padding:20px 16px 12px;font-size:20px;font-weight:700;color:#667eea;border-bottom:1px solid #f0f0f0;margin-bottom:8px}
+
 
 
 .sidebar .nav-item{padding:12px 20px;cursor:pointer;color:#555;font-size:14px;display:flex;align-items:center;gap:10px;border-left:3px solid transparent;transition:all .2s;margin:2px 0}
 
 
+
 .sidebar .nav-item:hover{background:#f5f7ff;color:#667eea}
+
 
 
 .sidebar .nav-item.active{background:#f0f2ff;color:#667eea;border-left-color:#667eea;font-weight:500}
 
 
+
 .sidebar .nav-item .icon{font-size:18px;width:24px;text-align:center}
+
 
 
 .sidebar .nav-spacer{flex:1}
 
 
+
 .sidebar .nav-bottom{border-top:1px solid #f0f0f0;padding:12px 20px;font-size:13px;color:#999}
+
 
 
 .sidebar .nav-bottom a{color:#999;text-decoration:none}
 
 
+
 .sidebar .nav-bottom a:hover{color:#667eea}
+
 
 
 .main{flex:1;display:flex;flex-direction:column}
 
 
+
 .header{background:#fff;border-bottom:1px solid #e8e8e8;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+
 
 
 .header .title{font-size:16px;font-weight:500;color:#333}
 
 
+
 .header .user-area{display:flex;align-items:center;gap:16px;font-size:14px;color:#666}
+
 
 
 .header .user-area a{color:#e74c3c;text-decoration:none;font-size:13px}
 
 
+
 .content{padding:24px;flex:1;overflow-y:auto}
+
 
 
 .tab-page{display:none}
 
 
+
 .tab-page.active{display:block}
+
 
 
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
 
 
+
 .stat-card{background:#fff;border-radius:10px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,.06);text-align:center}
+
 
 
 .stat-card .num{font-size:30px;font-weight:700;color:#667eea}
 
 
+
 .stat-card .label{font-size:13px;color:#999;margin-top:4px}
+
 
 
 .card{background:#fff;border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
 
 
+
 .card h2{font-size:16px;margin-bottom:16px;color:#444}
+
 
 
 .user-table{width:100%;border-collapse:collapse;font-size:14px}
 
 
+
 .user-table th{text-align:left;padding:10px 12px;border-bottom:2px solid #eee;color:#666;font-weight:500;font-size:13px}
+
 
 
 .user-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
 
 
+
 .upload-zone{border:2px dashed #ccc;border-radius:10px;padding:36px;text-align:center;cursor:pointer;transition:all .2s}
+
 
 
 .upload-zone:hover{border-color:#667eea;background:#f8f9ff}
 
 
+
 .upload-icon{font-size:40px;margin-bottom:8px}
+
 
 
 progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
+
 .file-list{list-style:none}
+
 
 
 .file-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0}
 
 
+
 .file-item:last-child{border-bottom:none}
+
 
 
 .file-info{flex:1}
 
 
+
 .file-name{font-size:14px;font-weight:500}
+
 
 
 .file-meta{font-size:12px;color:#999;margin-top:2px}
 
 
+
 .file-actions{display:flex;gap:6px}
+
 
 
 .file-actions a,.file-actions button{padding:4px 10px;font-size:12px;border:1px solid #ddd;border-radius:6px;text-decoration:none;color:#555;background:#fff;cursor:pointer;transition:all .15s}
 
 
+
 .file-actions a:hover,.file-actions button:hover{border-color:#667eea;color:#667eea}
+
 
 
 .file-actions .del-btn:hover{background:#fff5f5;border-color:#e74c3c;color:#e74c3c}
 
 
+
 .toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;opacity:0;z-index:999;transition:opacity .3s}
+
 
 
 .toast.show{opacity:1}
 
 
+
 .toast.success{background:#27ae60}
+
 
 
 .toast.error{background:#e74c3c}
 
 
+
 </style></head><body>
+
 
 
 <div class="sidebar">
 
 
+
 <span class="logo">茄子数据</span>
+
 
 
 <div class="nav-item active" onclick="switchPage('dashboard',this)"><span class="icon">&#x1f4ca;</span>仪表盘</div>
 
 
+
 <div class="nav-item" onclick="switchPage('files',this)"><span class="icon">&#x1f4c1;</span>文件管理</div>
+
 
 
 <div class="nav-item" onclick="switchPage('upload',this)"><span class="icon">&#x1f4e4;</span>上传</div>
 
 
+
 <div class="nav-item" onclick="switchPage('users',this)"><span class="icon">&#x1f465;</span>用户管理</div>
+
 
 
 <div class="nav-item" onclick="switchPage('clouddata',this)"><span class="icon">&#x2601;</span>云数据</div>
 
 
+
 <div class="nav-item" onclick="switchPage('apidocs',this)"><span class="icon">📖</span>API文档</div>
+
 
 
 <div class="nav-spacer"></div>
 
 
+
 <div class="nav-bottom"><span>&#x1f464; <!--U--></span> &middot; <a href="/logout">退出登录</a></div>
 
 
+
 </div>
+
 
 
 <div class="main">
 
 
+
 <div class="header"><span class="title">管理后台</span><span class="user-area">&#x1f464; <!--U--></span></div>
+
 
 
 <div class="content">
 
 
+
 <div class="tab-page active" id="page-dashboard">
+
 
 
 <div class="stats">
 
 
+
 <div class="stat-card"><div class="num" id="statUsers">-</div><div class="label">用户数</div></div>
+
 
 
 <div class="stat-card"><div class="num" id="statFiles">-</div><div class="label">文件数</div></div>
 
 
+
 <div class="stat-card"><div class="num" id="statSize">-</div><div class="label">存储量</div></div>
+
 
 
 <div class="stat-card"><div class="num" id="statAdmin">-</div><div class="label">管理员</div></div>
 
 
+
 </div>
 
 
+
 </div>
+
 
 
 <div class="tab-page" id="page-files">
 
 
+
 <div class="card"><h2>全部文件</h2><div id="fileList"><p style="color:#999;text-align:center;padding:20px">暂无文件</p></div></div>
 
 
+
 </div>
+
 
 
 <div class="tab-page" id="page-upload">
 
 
+
 <div class="card"><h2>上传文件</h2><div class="upload-zone" id="dropZone"><div class="upload-icon">&#x1f4c1;</div><p style="color:#999">拖拽文件到此处或点击选择</p><input type="file" id="fileInput" style="display:none"></div><progress id="uploadProgress" max="100"></progress></div>
+
 
 
 <div class="card"><h2>我的文件</h2><div id="myFileList"><p style="color:#999;text-align:center;padding:20px">暂无文件</p></div></div>
 
 
+
 </div>
+
 
 
 <div class="tab-page" id="page-users">
 
 
-<div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th><th>操作</th></tr><th style="width:100px">密码</th></thead><tbody id="userTableBody"></tbody></table></div>
+
+<div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
+
 
 
 </div>
+
 
 
 <div class="tab-page" id="page-clouddata">
 
 
+
 <div class="card" style="background:#edf7ec;padding:10px">
 
 
+
 <div style="margin-bottom:10px">
+
 
 
 <span style="font-size:18px">选择数据名称:</span>
 
 
+
 <select id="cdpSelect" style="width:300px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc"></select>
+
 
 
 <button onclick="createProject()" class="btn btn-info" style="margin:0 5px">创建云数据项目</button>
 
 
+
 <button onclick="deleteProject()" class="btn btn-danger">删除当前选择项目</button>
+
 
 
 <button onclick="resetAllRead(document.getElementById('cdpSelect').value)" class="btn btn-success" style="margin:0 5px">设置全部数据状态为未读取</button>
 
 
+
 </div>
 
 
+
 <div style="margin-bottom:10px">
+
 
 
 <span style="font-size:16px">总数:</span><span id="cdTotal" style="font-size:17px;font-weight:bold">0</span>
 
 
+
 <span style="font-size:16px;margin-left:15px">未读取:</span><span id="cdNoRead" style="font-size:17px;font-weight:bold;color:orange">0</span>
+
 
 
 <span style="font-size:16px;margin-left:15px">已读取:</span><span id="cdRead" style="font-size:17px;font-weight:bold;color:green">0</span>
 
 
+
 <button onclick="loadCloudDataStats(document.getElementById('cdpSelect').value)" class="btn btn-info" style="margin-left:10px">刷新</button>
+
 
 
 </div>
 
 
+
 <div style="overflow:auto">
+
 
 
 <table class="user-table" style="font-size:13px">
 
 
-<thead><tr><th>项目ID</th><th>项目名称</th><th>访问Token</th><th>项目创建时间</th><th>操作命令</th></tr><th style="width:100px">密码</th></thead>
+
+<thead><tr><th>项目ID</th><th>项目名称</th><th>访问Token</th><th>项目创建时间</th><th>操作命令</th></tr></thead>
+
 
 
 <tbody id="cdpTableBody"></tbody>
 
 
+
 </table>
 
 
+
 </div>
 
 
+
 </div>
+
+
+
+
+
 
 
 <h5 style="margin:1px"></h5>
 
 
+
 <div class="card" style="background:#fff4f4;padding:10px">
+
 
 
 <div style="margin-bottom:10px">
 
 
+
 <span style="font-size:18px">选择数据状态:</span>
+
 
 
 <select id="cdQueryType" style="width:200px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc">
 
 
+
 <option value="-1">所有数据</option>
+
 
 
 <option value="0">未读取的数据</option>
 
 
+
 <option value="1">已读取的数据</option>
+
 
 
 </select>
 
 
+
 <button onclick="exportCD('all')" class="btn btn-success">导出所有数据</button>
+
 
 
 <button onclick="exportCD('unread')" class="btn btn-success">导出所有未读取数据</button>
 
 
+
 <button onclick="exportCD('read')" class="btn btn-success">导出所有已读取数据</button>
+
 
 
 <div class="btn-group" style="display:inline-block;margin-left:5px">
 
 
+
 <button class="btn btn-danger dropdown-toggle" onclick="var m=this.nextElementSibling;m.style.display=m.style.display=='none'?'block':'none'">删除数据 &#9660;</button>
+
 
 
 <ul style="display:none;position:absolute;background:#fff;border:1px solid #ccc;list-style:none;padding:5px;z-index:10">
 
 
+
 <li><a href="#" onclick="batchDelete('all');return false" style="color:#333">删除所有数据</a></li>
+
 
 
 <li><a href="#" onclick="batchDelete('read');return false" style="color:#333">删除所有已读取数据</a></li>
 
 
+
 <li><a href="#" onclick="batchDelete('unread');return false" style="color:#333">删除所有未读取数据</a></li>
+
 
 
 </ul>
 
 
+
 </div>
+
 
 
 <input id="cdSearchText" type="text" style="width:300px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc;margin-left:10px" placeholder="输入数据名字搜索数据" onkeydown="if(event.keyCode==13)searchCD()">
 
 
+
 <button onclick="searchCD()" class="btn btn-info" style="margin-left:5px">🔍</button>
 
 
+
 </div>
+
 
 
 <div class="card" style="background:#fff8e1;padding:10px;margin-bottom:10px">
 
 
+
 <div style="margin-bottom:8px;font-size:16px;font-weight:bold">上传数据</div>
+
 
 
 <div>
 
 
+
 <span style="font-size:14px">数据名称:</span>
+
 
 
 <input id="cdUploadKey" type="text" style="width:200px;padding:4px;border-radius:4px;border:1px solid #ccc" placeholder="输入数据名称">
 
 
+
 <input id="cdUploadFile" type="file" accept=".txt,.json,.csv,.md,.xml,.yml,.yaml,.log,.ini,.cfg" style="display:inline-block;margin:0 10px">
+
 
 
 <button onclick="uploadTextFile()" class="btn btn-primary" style="background:#2196F3;color:#fff">上传</button>
 
 
+
 <span id="cdUploadStatus" style="margin-left:10px;font-size:13px;color:#999"></span>
 
 
+
 </div>
 
 
+
 </div>
+
 
 
 <div style="overflow:auto">
 
 
+
 <table class="user-table" style="font-size:13px">
 
 
-<thead><tr><th>Id</th><th>数据名称</th><th>数据</th><th>数据MD5</th><th>更新时间</th><th>状态</th><th>数据操作</th></tr><th style="width:100px">密码</th></thead>
+
+<thead><tr><th>Id</th><th>数据名称</th><th>数据</th><th>数据MD5</th><th>更新时间</th><th>状态</th><th>数据操作</th></tr></thead>
+
 
 
 <tbody id="cdDataBody"></tbody>
 
 
+
 </table>
 
 
+
 </div>
+
 
 
 <nav style="margin-top:10px;text-align:center">
 
 
+
 <ul id="cdPagination" class="pagination" style="list-style:none;display:inline-flex;gap:5px;padding:0"></ul>
+
 
 
 </nav>
 
 
+
 </div>
+
 
 
 </div></div>
 
 
+
 </div>
+
 
 
 </div></div>
 
 
+
 </div>
+
 
 
 </div></div>
 
 
+
 </div>
 
 
+
 </div></div>
+
 
 
 <div class="tab-page" id="page-apidocs">
@@ -2628,6 +2975,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <h3 style="margin-top:0">📖 API 对接文档</h3>
 
 <p style="color:#666;font-size:14px">以下接口供第三方开发者对接使用，需要先获取 Access Token。</p>
+
 
 
 <h4 style="margin:15px 0 5px">1. 获取数据列表</h4>
@@ -2641,6 +2989,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 </div>
 
 
+
 <h4 style="margin:15px 0 5px">2. 获取单条数据</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
@@ -2650,6 +2999,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <span style="color:#999">返回该条数据的原始内容（纯文本）</span>
 
 </div>
+
 
 
 <h4 style="margin:15px 0 5px">3. 上传数据</h4>
@@ -2663,6 +3013,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 </div>
 
 
+
 <h4 style="margin:15px 0 5px">4. 获取第一条未读数据（自动标已读）</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
@@ -2672,6 +3023,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <span style="color:#999">取该项目下第一条未读数据（按id升序），返回内容后自动标为已读。</span>
 
 </div>
+
 
 
 <h4 style="margin:15px 0 5px">5. 标记数据状态</h4>
@@ -2685,6 +3037,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 </div>
 
 
+
 <h4 style="margin:15px 0 5px">6. 删除第一条数据（即用即删）</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
@@ -2696,6 +3049,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 </div>
 
 
+
 <h4 style="margin:15px 0 5px">7. 删除数据</h4>
 
 <div style="background:#f5f5f5;padding:10px;border-radius:4px;font-size:13px;font-family:monospace">
@@ -2703,6 +3057,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <strong>DELETE</strong> /api/cddata/{data_id}?token={token}
 
 </div>
+
 
 
 <br>
@@ -2714,11 +3069,13 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 Token 用于鉴权，请妥善保管。</p>
 
 
+
 <h4 style="margin:15px 0 5px">🔗 API 地址</h4>
 
 <p style="font-size:13px;color:#666">当前线上地址：<a href="https://qiezidata-production.up.railway.app" target="_blank">https://qiezidata-production.up.railway.app</a></p>
 
 <p style="font-size:13px;color:#999">所有 API 请在此基础域名上拼接。</p>
+
 
 
 <h4 style="margin:15px 0 5px">🤖 懒人精灵调用示例</h4>
@@ -2801,320 +3158,489 @@ asynHttpGet(callback, url, 30)<br>
 </div><div id="toast" class="toast"></div>
 
 
+
+
+
+
+
 <script>
+
 
 
 /* v3 */
 
 
+
 function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='upload')loadMyFiles();if(id==='users')loadUsers();if(id==='clouddata')initCloudData()}
+
 
 
 document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
 
 
+
 document.getElementById('fileList').addEventListener('click',function(e){var btn=e.target.closest('.af-del');if(!btn)return;var fid=btn.dataset.fid;var fname=btn.dataset.fname;if(!confirm('确认删除文件「'+fname+'」吗？'))return;fetch('/admin/file/'+fid,{method:'DELETE',credentials:'include'}).then(function(r){if(!r.ok)throw Error();loadAllFiles();alert('文件已删除')}).catch(function(){alert('删除失败')})})
+
 
 
 document.getElementById('myFileList').addEventListener('click',function(e){var btn=e.target.closest('.af-del');if(!btn)return;var fid=btn.dataset.fid;var fname=btn.dataset.fname;if(!confirm('确认删除文件「'+fname+'」吗？'))return;fetch('/admin/file/'+fid,{method:'DELETE',credentials:'include'}).then(function(r){if(!r.ok)throw Error();loadMyFiles();alert('文件已删除')}).catch(function(){alert('删除失败')})})
 
 
+
+
+
+
+
 ;
+
 
 
 async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('上传成功','success');loadMyFiles()}catch(e){showToast('上传失败','error')}document.getElementById('uploadProgress').style.display='none'}
 
 
+
 async function loadDashboard(){try{var r=await fetch('/admin/stats',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();document.getElementById('statUsers').textContent=d.users;document.getElementById('statFiles').textContent=d.files;document.getElementById('statSize').textContent=d.size_display;document.getElementById('statAdmin').textContent=d.admins}catch(e){}}
+
 
 
 async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B | '+f.owner+'</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"af-del\" data-fid=\"' + f.id + '\" data-fname=\"'+f.original_name+'\">\u5220\u9664</button></div></li>'}h+='</ul>';document.getElementById('fileList').innerHTML=h}catch(e){}}
 
 
+
 async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'<span style="color:green">已是管理员</span>':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">删除</button><button data-uid="'+u.id+'" data-uname="'+u.username+'" class="set-admin-btn" style="margin-left:5px">设为管理员</button>')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
+
 
 
 document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.del-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));var uname=btn.getAttribute('data-uname');if(confirm('确定要删除用户 '+uname+' 吗?此操作不可恢复!'))deleteUser(uid)})
 
 
+
 document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.set-admin-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));var uname=btn.getAttribute('data-uname');if(confirm('确定将用户 '+uname+' 设为管理员吗?')){fetch('/admin/user/'+uid+'/set_admin',{method:'POST',credentials:'include'}).then(function(r){if(r.ok){alert('已设为管理员');loadUsers()}else{r.json().then(function(d){alert(d.detail||'设置失败')})}}).catch(function(){alert('请求失败')})}})
+
 
 
 async function deleteUser(uid){try{var r=await fetch('/admin/user/'+uid,{method:'DELETE',credentials:'include'});if(r.ok){var r2=await fetch('/admin/users',{credentials:'include'});if(r2.status===401){window.location.href='/';return}var users=await r2.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'-':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">删除</button>')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}else{var e=await r.json();alert(e.detail||'删除失败')}}catch(e){alert('删除失败')}}async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>\u4e0b\u8f7d</a><button class=\"af-del\" data-fid=\"' + f.id + '\" data-fname=\"'+f.original_name+'\">\u5220\u9664</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
 
 
+
 async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
 
 
+
+
+
+
+
 async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'全部',read:'已读取',unread:'未读取'};if(!confirm('确定导出'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
 
 
+
+
+
+
+
 async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'全部',read:'已读取',unread:'未读取'};if(!confirm('确定导出'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
+
+
+
+
+
+
+
+
+
 
 
 function loadCloudDataProjects(){fetch('/admin/cdprojects',{credentials:'include'}).then(function(r){return r.json()}).then(function(ps){window.cdProjects=ps;var sel=document.getElementById('cdpSelect');if(!sel)return;sel.innerHTML='';for(var i=0;i<ps.length;i++){var o=document.createElement('option');o.value=ps[i].id;o.text='ID:'+ps[i].id+' '+ps[i].name;sel.appendChild(o)}var p=ps[0];if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">重置TOKEN</button></td></tr>';loadCloudDataStats(p.id);loadCloudDataList(p.id,1)}})}
 
 
+
 function loadCloudDataStats(pid){fetch('/admin/cdprojects/stats/'+pid,{credentials:'include'}).then(function(r){return r.json()}).then(function(s){document.getElementById('cdTotal').textContent=s.total;document.getElementById('cdNoRead').textContent=s.noRead;document.getElementById('cdRead').textContent=s.read})}
+
 
 
 function loadCloudDataList(pid,page){var q=document.getElementById('cdQueryType').value;var s=document.getElementById('cdSearchText').value;var u='/admin/cddata/'+pid+'?page='+page+'&limit=20&queryType='+q+(s?'&search='+encodeURIComponent(s):'');fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){var tb=document.getElementById('cdDataBody');if(!tb)return;tb.innerHTML='';for(var i=0;i<d.items.length;i++){var x=d.items[i];var st=x.read?'已读取':'未读取';var sc=st==='已读取'?'green':'orange';var btnT=x.read?'修改为未读取':'修改为已读取';tb.innerHTML+='<tr><td>'+x.id+'</td><td>'+x.name+'</td><td><a href=\"#\" onclick=\"downloadCD('+x.id+');return false\">(点击下载)</a></td><td>'+x.md5+'</td><td>'+(x.t||'')+'</td><td><span style=\"color:'+sc+'\">'+st+'</span></td><td><button onclick=\"toggleCDState('+x.id+')\" class=\"mybtn btn btn-danger\">'+btnT+'</button> <button onclick=\"if(confirm("确定删除?"))deleteCD('+x.id+')\" class=\"mybtn btn btn-danger\">删除数据</button></td></tr>'}window.cdPage=page;window.cdTotal=d.total;var pn=Math.ceil(d.total/20)||1;var ph='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+',1);return false\">首页</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.max(1,page-1)+');return false\">上一页</a></li>';for(var i=1;i<=pn;i++){ph+='<li class=\"'+(i===page?'active':'')+'\"><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+i+');return false\">'+i+'</a></li>'}ph+='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.min(pn,page+1)+');return false\">下一页</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+pn+');return false\">尾页</a></li>';document.getElementById('cdPagination').innerHTML=ph})}
 
 
+
 function toggleCDState(cid){fetch('/admin/cddata/state/'+cid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){var pid=document.getElementById('cdpSelect').value;loadCloudDataList(pid,window.cdPage||1);loadCloudDataStats(pid)}})}
+
 
 
 function deleteCD(cid){var pid=document.getElementById('cdpSelect').value;fetch('/admin/cddata/'+cid,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataList(pid,window.cdPage||1);loadCloudDataStats(pid)})}
 
 
+
 function uploadTextFile(){var key=document.getElementById('cdUploadKey').value.trim();var fileInput=document.getElementById('cdUploadFile');if(!fileInput.files||!fileInput.files[0]){alert('请选择文件');return}if(!key)key=fileInput.files[0].name.replace(/\.[^.]+$/,'');var pid=document.getElementById('cdpSelect').value;if(!pid){alert('请先选择项目');return}var reader=new FileReader();reader.onload=function(e){var val=e.target.result;fetch('/admin/clouddata/add',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({key:key,value:val,project_id:parseInt(pid)})}).then(function(r){if(r.ok){document.getElementById('cdUploadStatus').textContent='上传成功: '+key;document.getElementById('cdUploadKey').value='';fileInput.value='';loadCloudDataList(pid,1)}else{alert('上传失败')}}).catch(function(){alert('上传失败')})};reader.readAsText(fileInput.files[0])}
+
 
 
 function resetToken(pid){if(!confirm('重置后旧Token失效，确定重置吗?'))return;fetch('/admin/cdprojects/resettoken/'+pid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){document.getElementById('cdpToken_'+pid).textContent=d.token;showToast('重置成功','success')}})}
 
 
+
 function resetAllRead(pid){if(!confirm('确定将所有数据设为未读取?'))return;fetch('/admin/cdprojects/resetallread/'+pid,{method:'POST',credentials:'include'}).then(function(){loadCloudDataStats(pid);loadCloudDataList(pid,1)})}
+
 
 
 function createProject(){var n=prompt('请输入key标识符称:');if(!n)return;fetch('/admin/cdprojects',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({name:n})}).then(function(){loadCloudDataProjects();showToast('创建成功','success')})}
 
 
+
 function deleteProject(){var pid=document.getElementById('cdpSelect').value;if(!confirm('删除项目会清空所有数据，确定删除吗?'))return;fetch('/admin/cdprojects/'+pid,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataProjects();showToast('删除成功','success')})}
+
 
 
 function exportCD(m){var pid=document.getElementById('cdpSelect').value;var t={all:'全部',read:'已读取',unread:'未读取'};if(!confirm('确定导出'+t[m]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+m)}
 
 
+
 function batchDelete(m){var pid=document.getElementById('cdpSelect').value;var t={all:'全部数据',read:'已读取数据',unread:'未读取数据'};if(!confirm('确定删除'+t[m]+'?'))return;fetch('/admin/cddata/batch/'+pid+'?mode='+m,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataList(pid,1);loadCloudDataStats(pid);showToast('删除成功','success')})}
+
 
 
 function searchCD(){var pid=document.getElementById('cdpSelect').value;loadCloudDataList(pid,1)}
 
 
+
 function downloadCD(cid){window.open('/admin/cddata/download/'+cid)}
+
 
 
 function initCloudData(){var sel=document.getElementById('cdpSelect');if(!sel)return;sel.onchange=function(){var pid=this.value;if(!pid)return;var p=window.cdProjects.find(function(x){return x.id==pid});if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">重置TOKEN</button></td></tr>'}loadCloudDataStats(pid);loadCloudDataList(pid,1)};document.getElementById('cdQueryType').onchange=function(){var pid=sel.value;if(pid)loadCloudDataList(pid,1)};loadCloudDataProjects()}
 
 
+
 document.addEventListener('DOMContentLoaded',initCloudData);
 
 
+
 </script>
+
 
 
 <div id="role-indicator" data-role="<!--R-->" style="display:none"></div>
 <script>
 (function(){var e=document.getElementById("role-indicator");var r=e?e.dataset.role:"";if(r!="admin"){document.querySelectorAll('[onclick*="dashboard"],[onclick*="users"]').forEach(function(n){n.style.display="none"});}})();
 </script>
-
-<div id="profileModal" class="modal" style="display:none"><div class="modal-content" style="max-width:420px"><span class="modal-close" onclick="closeProfile()">&times;</span><h3>个人资料</h3><div class="form-group"><label>用户名</label><input id="profModalUser" type="text" readonly style="background:#f5f5f5;cursor:not-allowed"></div><div class="form-group"><label>显示名称</label><input id="profModalDN" type="text" placeholder="输入显示名称"></div><div class="form-group"><label>角色</label><input id="profModalRole" type="text" readonly style="background:#f5f5f5;cursor:not-allowed"></div><button class="btn" onclick="saveProfileModal()">保存</button><div id="profModalSaveMsg" class="msg" style="display:none"></div><hr style="margin:16px 0"><h4>修改密码</h4><div class="form-group"><label>旧密码</label><input id="profModalOldPwd" type="password" placeholder="输入旧密码"></div><div class="form-group"><label>新密码</label><input id="profModalNewPwd" type="password" placeholder="至少4个字符"></div><div class="form-group"><label>确认新密码</label><input id="profModalNewPwd2" type="password" placeholder="再次输入"></div><button class="btn" onclick="submitProfilePwdModal()">修改密码</button><div id="profModalPwdMsg" class="msg" style="display:none"></div></div></div>
-<div id="changePasswordModal" class="modal" style="display:none"><div class="modal-content" style="max-width:380px"><span class="modal-close" onclick="document.getElementById('changePasswordModal').style.display='none'">&times;</span><h3>修改用户密码</h3><p id="cpUserInfo" style="color:#666;margin-bottom:12px;font-size:13px"></p><div class="form-group"><label>新密码</label><input id="cpNewPwd" type="password" placeholder="至少4个字符"></div><button class="btn" onclick="submitAdminChangePwd()">确认修改</button><div id="cpMsg" class="msg" style="display:none"></div></div></div>
 </body></html>"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ---- CloudData Project API ----
 
 
+
 @app.get('/admin/cdprojects')
+
 
 
 async def cdprojects_list(request: Request):
 
 
+
     uid = _require(request); user = await _user(uid)
+
 
 
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
+
     if use_pg:
+
 
 
         r = await db_fetch("SELECT id,name,token,to_char(created_at,'YYYY-MM-DD HH24:MI') AS t FROM clouddata_projects ORDER BY id DESC")
 
 
+
     else:
+
 
 
         r = await db_fetch('SELECT id AS "id",name,token,created_at AS t FROM clouddata_projects ORDER BY id DESC')
 
 
+
     return r
+
+
+
+
+
 
 
 @app.post('/admin/cdprojects')
 
 
+
 async def cdprojects_create(request: Request):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     body = await request.json(); name = body.get('name','')
 
 
+
     import uuid
+
 
 
     token = uuid.uuid4().hex[:32]
 
 
+
     if use_pg:
+
 
 
         await db_execute("INSERT INTO clouddata_projects (name,token) VALUES ($1,$2)", name, token)
 
 
+
     else:
+
 
 
         await db_execute("INSERT INTO clouddata_projects (name,token,created_at) VALUES (?,?,?)", name, token, datetime.utcnow().isoformat())
 
 
+
     return {'ok':True}
+
+
+
+
+
 
 
 @app.delete('/admin/cdprojects/{pid}')
 
 
+
 async def cdprojects_delete(request: Request, pid: int):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     await db_execute("DELETE FROM clouddata WHERE project_id=?", pid) if not use_pg else await db_execute("DELETE FROM clouddata WHERE project_id=$1", pid)
 
 
+
     if use_pg:
+
 
 
         await db_execute("DELETE FROM clouddata_projects WHERE id=$1", pid)
 
 
+
     else:
+
 
 
         await db_execute("DELETE FROM clouddata_projects WHERE id=?", pid)
 
 
+
     return {'ok':True}
+
+
+
+
+
 
 
 @app.post('/admin/cdprojects/resettoken/{pid}')
 
 
+
 async def cdprojects_reset_token(request: Request, pid: int):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     import uuid
 
 
+
     token = uuid.uuid4().hex[:32]
 
 
+
     if use_pg:
+
 
 
         await db_execute("UPDATE clouddata_projects SET token=$1 WHERE id=$2", token, pid)
 
 
+
     else:
+
 
 
         await db_execute("UPDATE clouddata_projects SET token=? WHERE id=?", token, pid)
 
 
+
     return {'ok':True, 'token':token}
+
+
+
+
+
 
 
 @app.post('/admin/cdprojects/resetallread/{pid}')
 
 
+
 async def cdprojects_reset_all_read(request: Request, pid: int):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
+
     if use_pg:
+
 
 
         await db_execute("UPDATE clouddata SET read=FALSE WHERE project_id=$1", pid)
 
 
+
     else:
+
 
 
         await db_execute("UPDATE clouddata SET read=0 WHERE project_id=?", pid)
 
 
+
     return {'ok':True}
+
+
+
+
+
 
 
 @app.get('/admin/cdprojects/stats/{pid}')
 
 
+
 async def cdprojects_stats(request: Request, pid: int):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     if use_pg:
 
 
+
         async with db_pool.acquire() as conn:
+
 
 
             total = await conn.fetchval("SELECT COUNT(*)::int FROM clouddata WHERE project_id=$1", pid)
 
 
+
             no_read = await conn.fetchval("SELECT COUNT(*)::int FROM clouddata WHERE project_id=$1 AND read=FALSE", pid)
+
 
 
             read_cnt = await conn.fetchval("SELECT COUNT(*)::int FROM clouddata WHERE project_id=$1 AND read=TRUE", pid)
 
 
+
     else:
+
 
 
         conn = sqlite3.connect('/data/files.db')
 
 
+
         total = conn.execute("SELECT COUNT(*) FROM clouddata WHERE project_id=?", (pid,)).fetchone()[0]
+
 
 
         no_read = conn.execute("SELECT COUNT(*) FROM clouddata WHERE project_id=? AND read=0", (pid,)).fetchone()[0]
 
 
+
         read_cnt = conn.execute("SELECT COUNT(*) FROM clouddata WHERE project_id=? AND read=1", (pid,)).fetchone()[0]
+
 
 
         conn.close()
 
 
+
     return {'total':total, 'noRead':no_read, 'read':read_cnt}
+
+
+
+
+
 
 
 @app.get('/api/cddata/{project_id}/fetchone')
@@ -3184,6 +3710,7 @@ async def api_fetch_one_cddata(project_id: int, request: Request):
         return PlainTextResponse(val)
 
 
+
 @app.get('/api/cddata/{project_id}/popfirst')
 
 async def api_pop_first_cddata(project_id: int, request: Request):
@@ -3251,6 +3778,7 @@ async def api_pop_first_cddata(project_id: int, request: Request):
         return PlainTextResponse(val)
 
 
+
 @app.get('/api/cddata/{data_id}')
 
 async def api_get_cddata(request: Request, data_id: int):
@@ -3296,6 +3824,7 @@ async def api_get_cddata(request: Request, data_id: int):
         conn.commit(); conn.close()
 
         return PlainTextResponse(row[1])
+
 
 
 @app.post('/api/cddata/{project_id}')
@@ -3353,304 +3882,463 @@ async def api_post_cddata(project_id: int, request: Request):
     return JSONResponse({'ok':True, 'key':k})
 
 
+
 @app.get('/admin/cddata/{pid}')
+
 
 
 async def cddata_list(request: Request, pid: int):
 
 
+
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     page = int(request.query_params.get('page',1)); limit = int(request.query_params.get('limit',20))
 
 
+
     queryType = int(request.query_params.get('queryType', -1))  # -1=all, 0=unread, 1=read
+
 
 
     search = request.query_params.get('search','')
 
 
+
     offset = (page-1)*limit
 
 
+
+
+
+
+
     where = f"WHERE project_id='{pid}'"
+
 
 
     if queryType == 0: where += " AND read=FALSE" if use_pg else " AND read=0"
 
 
+
     elif queryType == 1: where += " AND read=TRUE" if use_pg else " AND read=1"
+
 
 
     if search: where += f" AND name LIKE '%{search}%'"
 
 
+
+
+
+
+
     if use_pg:
 
 
+
         async with db_pool.acquire() as conn:
+
 
 
             total = await conn.fetchval(f"SELECT COUNT(*)::int FROM clouddata {where}")
 
 
+
             r = await conn.fetch(f"SELECT id,k,v,name,md5,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata {where} ORDER BY id DESC LIMIT {limit} OFFSET {offset}")
+
 
 
             r = [dict(row) for row in r]
 
 
+
     else:
 
 
+
         conn = sqlite3.connect('/data/files.db')
+
 
 
         total = conn.execute(f"SELECT COUNT(*) FROM clouddata {where}").fetchone()[0]
 
 
+
         r = conn.execute(f"SELECT id,k,v,name,md5,t,read FROM clouddata {where} ORDER BY id DESC LIMIT {limit} OFFSET {offset}").fetchall()
+
 
 
         r = [dict(zip([desc[0] for desc in conn.execute(f'SELECT id,k,v,name,md5,t,read FROM clouddata {where} LIMIT 1').description], row)) for row in r]
 
 
+
         conn.close()
+
 
 
     return {'items': r, 'total': total}
 
 
+
+
+
+
+
 @app.post('/admin/cddata/state/{cid}')
+
 
 
 async def cddata_toggle_state(request: Request, cid: int):
 
 
+
     uid = _require(request); user = await _user(uid)
+
 
 
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
+
     if use_pg:
 
 
+
         async with db_pool.acquire() as conn:
+
 
 
             await conn.execute("UPDATE clouddata SET read=NOT read WHERE id=$1", cid)
 
 
+
             val = await conn.fetchval("SELECT read FROM clouddata WHERE id=$1", cid)
+
 
 
     else:
 
 
+
         conn = sqlite3.connect('/data/files.db')
+
 
 
         conn.execute("UPDATE clouddata SET read = CASE WHEN read=0 THEN 1 ELSE 0 END WHERE id=?", (cid,))
 
 
+
         val = conn.execute("SELECT read FROM clouddata WHERE id=?", (cid,)).fetchone()[0]
+
 
 
         conn.commit(); conn.close()
 
 
+
     return {'ok':True, 'read': bool(val)}
+
+
+
+
+
 
 
 @app.delete('/admin/cddata/{cid}')
 
 
+
 async def cddata_delete(request: Request, cid: int):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     await db_execute("DELETE FROM clouddata WHERE id=?", cid) if not use_pg else await db_execute("DELETE FROM clouddata WHERE id=$1", cid)
 
 
+
     return {'ok':True}
+
+
+
+
+
 
 
 @app.delete('/admin/cddata/batch/{pid}')
 
 
+
 async def cddata_batch_delete(request: Request, pid: int):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     mode = request.query_params.get('mode','all')  # all, read, unread
 
 
+
     if mode == 'all':
+
 
 
         await db_execute("DELETE FROM clouddata WHERE project_id=?", pid) if not use_pg else await db_execute("DELETE FROM clouddata WHERE project_id=$1", pid)
 
 
+
     elif mode == 'read':
+
 
 
         await db_execute("DELETE FROM clouddata WHERE project_id=? AND read=1", pid) if not use_pg else await db_execute("DELETE FROM clouddata WHERE project_id=$1 AND read=TRUE", pid)
 
 
+
     elif mode == 'unread':
+
 
 
         await db_execute("DELETE FROM clouddata WHERE project_id=? AND read=0", pid) if not use_pg else await db_execute("DELETE FROM clouddata WHERE project_id=$1 AND read=FALSE", pid)
 
 
+
     return {'ok':True}
+
+
+
+
+
 
 
 @app.get('/admin/cddata/export/{pid}/{mode}')
 
 
+
 async def cddata_export(request: Request, pid: int, mode: str):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     where = f"WHERE project_id='{pid}'"
 
 
+
     if mode == 'read': where += " AND read=TRUE" if use_pg else " AND read=1"
+
 
 
     elif mode == 'unread': where += " AND read=FALSE" if use_pg else " AND read=0"
 
 
+
+    
+
+
+
     if use_pg:
 
 
+
         async with db_pool.acquire() as conn:
+
 
 
             raw = await conn.fetch(f"SELECT id,k,v,name,md5,to_char(t,'YYYY-MM-DD HH24:MI') AS t,read FROM clouddata {where} ORDER BY id DESC")
 
 
+
             r = [dict(row) for row in raw]
+
 
 
     else:
 
 
+
         conn = sqlite3.connect('/data/files.db')
+
 
 
         raw = conn.execute(f"SELECT id,k,v,name,md5,t,read FROM clouddata {where} ORDER BY id DESC").fetchall()
 
 
+
         r = [dict(zip([desc[0] for desc in conn.execute(f'SELECT id,k,v,name,md5,t,read FROM clouddata {where} LIMIT 1').description], row)) for row in raw]
 
 
+
         conn.close()
+
+
+
+    
+
 
 
     import csv, io
 
 
+
     out = io.StringIO()
+
 
 
     writer = csv.writer(out)
 
 
+
     writer.writerow(['ID','数据名称','数据','Name','MD5','更新时间','状态'])
+
 
 
     for row in r:
 
 
+
         writer.writerow([row['id'],row['k'],row['v'],row.get('name',''),row.get('md5',''),row['t'],'已读' if row['read'] else '未读'])
+
 
 
     csv_bytes = out.getvalue().encode('utf-8-sig')
 
 
+
     return Response(content=csv_bytes, media_type='text/csv', headers={'Content-Disposition': f'attachment; filename=clouddata_{pid}_{mode}.csv'})
+
+
+
+
+
 
 
 @app.get('/admin/cddata/download/{cid}')
 
 
+
 async def cddata_download(request: Request, cid: int):
+
 
 
     uid = _require(request); user = await _user(uid)
 
 
+
     if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+
 
 
     if use_pg:
 
 
+
         async with db_pool.acquire() as conn:
+
 
 
             raw = await conn.fetchrow("SELECT k,v FROM clouddata WHERE id=$1", cid)
 
 
+
             r = [dict(raw)] if raw else []
+
 
 
     else:
 
 
+
         conn = sqlite3.connect('/data/files.db')
+
 
 
         raw = conn.execute("SELECT k,v FROM clouddata WHERE id=?", (cid,)).fetchone()
 
 
+
         r = [{'k':raw[0],'v':raw[1]}] if raw else []
+
 
 
         conn.close()
 
 
+
     if not r: raise HTTPException(status_code=404)
+
 
 
     data = r[0]['v'].encode('utf-8')
 
 
+
     return Response(content=data, media_type='text/plain', headers={'Content-Disposition': f'attachment; filename={r[0]["k"]}.txt'})
+
+
+
+
+
 
 
 if __name__ == '__main__':
 
 
+
     import uvicorn
+
 
 
     uvicorn.run(app, host=HOST, port=PORT)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 # deploy 07/21/2026 03:27:38
+
+
+
+
+
+
+
 
 
 # build_1784643100
