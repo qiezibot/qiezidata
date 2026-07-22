@@ -29,7 +29,7 @@ DATABASE_URL = os.environ.get('DATABASE_URL', '')
 UPLOAD_DIR = os.environ.get('UPLOAD_DIR', '/data/uploads')
 HOST = '0.0.0.0'
 PORT = int(os.environ.get('PORT', '8000'))
-SECRET_KEY = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+SECRET_KEY = os.environ.get('SECRET_KEY', 'c3adc9837be6a1ad025450a8568e77bb19d3db42221875e2afa7d98c4706af2a')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app = FastAPI(title='Eggplant Data (Railway)', version='2.1')
 
