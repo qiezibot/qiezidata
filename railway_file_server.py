@@ -38,7 +38,7 @@ use_pg = bool(DATABASE_URL)
 db_pool = None
 import asyncio
 
-async def init_db():
+
     global db_pool
     if use_pg:
         import asyncpg
