@@ -53,7 +53,8 @@ async def init_db():
             except: pass
 
             await conn.execute('CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username VARCHAR(64) UNIQUE NOT NULL, password_hash VARCHAR(128) NOT NULL, display_name VARCHAR(128), created_at TIMESTAMP NOT NULL DEFAULT NOW(), role VARCHAR(16) NOT NULL DEFAULT \'user\')')
-            # 杩佺Щ锛氱粰鏃?users 琛ㄦ坊鍔?role 鍒?            ucols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
+            # 迁移：给旧 users 表添加 role 列
+            ucols = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
             if 'role' not in [c['column_name'] for c in ucols]:
                 await conn.execute("ALTER TABLE users ADD COLUMN role VARCHAR(16) NOT NULL DEFAULT 'user'")
             try:
@@ -104,7 +105,8 @@ async def init_db():
         except: pass
 
         conn.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, display_name TEXT, created_at TEXT NOT NULL, role TEXT NOT NULL DEFAULT \'user\')')
-        # 杩佺Щ锛氱粰鏃?users 琛ㄦ坊鍔?role 鍒?        ucur = conn.execute("PRAGMA table_info(users)")
+        # 迁移：给旧 users 表添加 role 列
+        ucur = conn.execute("PRAGMA table_info(users)")
         ucols = [r[1] for r in ucur.fetchall()]
         if 'role' not in ucols:
             conn.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
@@ -217,6 +219,23 @@ async def get_me(request: Request):
     uid = _require(request); user = await _user(uid)
     if not user: raise HTTPException(status_code=404)
     return user
+
+@app.post('/admin/user/{uid}/change_password')
+async def cpw_admin(uid: int, request: Request):
+    admin = await _user(_require(request))
+    if not admin or admin.get('role') != 'admin':
+        return JSONResponse({'ok': False, 'detail': '无权限'})
+    data = await request.json()
+    np = data.get('new_password', '')
+    if not np or len(np) < 4:
+        return JSONResponse({'ok': False, 'detail': '密码需至少4个字符'})
+    if use_pg:
+        await db_execute('UPDATE users SET password_hash=$1 WHERE id=$2', _hash(np), uid)
+    else:
+        conn = sqlite3.connect('/data/files.db')
+        conn.execute('UPDATE users SET password_hash=? WHERE id=?', (_hash(np), uid))
+        conn.commit(); conn.close()
+    return JSONResponse({'ok': True, 'detail': '密码已修改'})
 
 @app.post('/upload')
 async def upload_file(request: Request, file: UploadFile = File(...)):
@@ -453,7 +472,7 @@ async def exc_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=getattr(exc,'status_code',500), content={'detail': str(exc.detail if hasattr(exc,'detail') else exc)})
 
 # ===== HTML =====
-_LOGIN = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>鑼勫瓙鏁版嵁</title><style>
+_LOGIN = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:rgba(255,255,255,.95);border-radius:16px;padding:40px 36px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:400px;width:100%;text-align:center}
@@ -473,33 +492,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .msg{font-size:13px;margin-top:10px;display:none;padding:8px 12px;border-radius:6px;color:#c0392b;background:#fdecea}
 .msg.success{color:#27ae60;background:#eafaf1}
 </style></head><body><div class="card">
-<h1>鑼勫瓙鏁版嵁</h1><p class="subtitle">鏂囦欢绠＄悊 v2.1</p>
-<div class="tabs"><div class="tab active" onclick="switchTab('login')">鐧诲綍</div><div class="tab" onclick="switchTab('register')">娉ㄥ唽</div></div>
+<h1>茄子数据</h1><p class="subtitle">文件管理 v2.1</p>
+<div class="tabs"><div class="tab active" onclick="switchTab('login')">登录</div><div class="tab" onclick="switchTab('register')">注册</div></div>
 <div class="form active" id="loginForm">
 <form method="post" action="/login">
-<div class="input-group"><label>鐢ㄦ埛鍚?/label><input type="text" name="username" placeholder="杈撳叆鐢ㄦ埛鍚? required autofocus></div>
-<div class="input-group"><label>瀵嗙爜</label><input type="password" name="password" placeholder="杈撳叆瀵嗙爜" required></div>
-<button class="btn" type="submit">鐧诲綍</button>
+<div class="input-group"><label>用户名</label><input type="text" name="username" placeholder="输入用户名" required autofocus></div>
+<div class="input-group"><label>密码</label><input type="password" name="password" placeholder="输入密码" required></div>
+<button class="btn" type="submit">登录</button>
 </form>
-<div class="msg" id="loginError">鐢ㄦ埛鍚嶆垨瀵嗙爜閿欒</div>
+<div class="msg" id="loginError">用户名或密码错误</div>
 </div>
 <div class="form" id="registerForm">
 <form method="post" action="/register" onsubmit="return validateRegister()">
-<div class="input-group"><label>鐢ㄦ埛鍚?/label><input type="text" name="username" id="regUser" placeholder="2-20涓瓧绗? required minlength="2" maxlength="20" pattern="^[a-zA-Z0-9_]+$"></div>
-<div class="input-group"><label>鏄剧ず鍚嶇О</label><input type="text" name="display_name" placeholder="閫夊～" maxlength="30"></div>
-<div class="input-group"><label>瀵嗙爜</label><input type="password" name="password" id="regPass" placeholder="鑷冲皯4涓瓧绗? required minlength="4"></div>
-<button class="btn" type="submit">娉ㄥ唽</button>
+<div class="input-group"><label>用户名</label><input type="text" name="username" id="regUser" placeholder="2-20个字符" required minlength="2" maxlength="20" pattern="^[a-zA-Z0-9_]+$"></div>
+<div class="input-group"><label>显示名称</label><input type="text" name="display_name" placeholder="选填" maxlength="30"></div>
+<div class="input-group"><label>密码</label><input type="password" name="password" id="regPass" placeholder="至少4个字符" required minlength="4"></div>
+<button class="btn" type="submit">注册</button>
 </form>
 <div class="msg" id="regError"></div>
 </div>
 </div>
 <script>
-var p=new URLSearchParams(window.location.search);if(p.get('e')==='1')document.getElementById('loginError').style.display='block';if(p.get('reg')==='1'){document.getElementById('loginError').textContent='娉ㄥ唽鎴愬姛锛岃鐧诲綍';document.getElementById('loginError').className='msg success';document.getElementById('loginError').style.display='block'}
+var p=new URLSearchParams(window.location.search);if(p.get('e')==='1')document.getElementById('loginError').style.display='block';if(p.get('reg')==='1'){document.getElementById('loginError').textContent='注册成功，请登录';document.getElementById('loginError').className='msg success';document.getElementById('loginError').style.display='block'}
 function switchTab(n){document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});document.querySelectorAll('.form').forEach(function(f){f.classList.remove('active')});if(n==='login'){document.querySelector('.tab:first-child').classList.add('active');document.getElementById('loginForm').classList.add('active')}else{document.querySelector('.tab:last-child').classList.add('active');document.getElementById('registerForm').classList.add('active')}}
-function validateRegister(){var p1=document.getElementById('regPass').value;if(p1.length<4){document.getElementById('regError').textContent='瀵嗙爜澶煭';document.getElementById('regError').style.display='block';return false}return true}
+function validateRegister(){var p1=document.getElementById('regPass').value;if(p1.length<4){document.getElementById('regError').textContent='密码太短';document.getElementById('regError').style.display='block';return false}return true}
 </script></body></html>"""
 
-_ADMIN = """\<<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>绠＄悊鍚庡彴 - 鑼勫瓙鏁版嵁</title><style>
+_ADMIN = """\<<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理后台 - 茄子数据</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;color:#333;display:flex;min-height:100vh}
 .sidebar{width:220px;background:#fff;border-right:1px solid #e8e8e8;min-height:100vh;flex-shrink:0;display:flex;flex-direction:column}
@@ -549,54 +568,54 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 .toast.error{background:#e74c3c}
 </style></head><body>
 <div class="sidebar">
-<a href="/" class="logo">鑼勫瓙鏁版嵁</a>
-<div class="nav-item active" onclick="switchPage('dashboard',this)"><span class="icon">&#x1f4ca;</span>浠〃鐩?/div>
-<div class="nav-item" onclick="switchPage('files',this)"><span class="icon">&#x1f4c1;</span>鏂囦欢绠＄悊</div>
-<div class="nav-item" onclick="switchPage('upload',this)"><span class="icon">&#x1f4e4;</span>涓婁紶</div>
-<div class="nav-item" onclick="switchPage('users',this)"><span class="icon">&#x1f465;</span>鐢ㄦ埛绠＄悊</div>
-<div class="nav-item" onclick="switchPage('clouddata',this)"><span class="icon">&#x2601;</span>浜戞暟鎹?/div>
+<a href="/" class="logo">茄子数据</a>
+<div class="nav-item active" onclick="switchPage('dashboard',this)"><span class="icon">&#x1f4ca;</span>仪表盘</div>
+<div class="nav-item" onclick="switchPage('files',this)"><span class="icon">&#x1f4c1;</span>文件管理</div>
+<div class="nav-item" onclick="switchPage('upload',this)"><span class="icon">&#x1f4e4;</span>上传</div>
+<div class="nav-item" onclick="switchPage('users',this)"><span class="icon">&#x1f465;</span>用户管理</div>
+<div class="nav-item" onclick="switchPage('clouddata',this)"><span class="icon">&#x2601;</span>云数据</div>
 <div class="nav-spacer"></div>
-<div class="nav-bottom"><span>&#x1f464; <!--U--></span> &middot; <a href="/logout">閫€鍑虹櫥褰?/a></div>
+<div class="nav-bottom"><span>&#x1f464; <!--U--></span> &middot; <a href="/logout">退出登录</a></div>
 </div>
 <div class="main">
-<div class="header"><span class="title">绠＄悊鍚庡彴</span><span class="user-area">&#x1f464; <!--U--></span></div>
+<div class="header"><span class="title">管理后台</span><span class="user-area">&#x1f464; <!--U--></span></div>
 <div class="content">
 <div class="tab-page active" id="page-dashboard">
 <div class="stats">
-<div class="stat-card"><div class="num" id="statUsers">-</div><div class="label">鐢ㄦ埛鏁?/div></div>
-<div class="stat-card"><div class="num" id="statFiles">-</div><div class="label">鏂囦欢鏁?/div></div>
-<div class="stat-card"><div class="num" id="statSize">-</div><div class="label">瀛樺偍閲?/div></div>
-<div class="stat-card"><div class="num" id="statAdmin">-</div><div class="label">绠＄悊鍛?/div></div>
+<div class="stat-card"><div class="num" id="statUsers">-</div><div class="label">用户数</div></div>
+<div class="stat-card"><div class="num" id="statFiles">-</div><div class="label">文件数</div></div>
+<div class="stat-card"><div class="num" id="statSize">-</div><div class="label">存储量</div></div>
+<div class="stat-card"><div class="num" id="statAdmin">-</div><div class="label">管理员</div></div>
 </div>
 </div>
 <div class="tab-page" id="page-files">
-<div class="card"><h2>鍏ㄩ儴鏂囦欢</h2><div id="fileList"><p style="color:#999;text-align:center;padding:20px">鏆傛棤鏂囦欢</p></div></div>
+<div class="card"><h2>全部文件</h2><div id="fileList"><p style="color:#999;text-align:center;padding:20px">暂无文件</p></div></div>
 </div>
 <div class="tab-page" id="page-upload">
-<div class="card"><h2>涓婁紶鏂囦欢</h2><div class="upload-zone" id="dropZone"><div class="upload-icon">&#x1f4c1;</div><p style="color:#999">鎷栨嫿鏂囦欢鍒版澶勬垨鐐瑰嚮閫夋嫨</p><input type="file" id="fileInput" style="display:none"></div><progress id="uploadProgress" max="100"></progress></div>
-<div class="card"><h2>鎴戠殑鏂囦欢</h2><div id="myFileList"><p style="color:#999;text-align:center;padding:20px">鏆傛棤鏂囦欢</p></div></div>
+<div class="card"><h2>上传文件</h2><div class="upload-zone" id="dropZone"><div class="upload-icon">&#x1f4c1;</div><p style="color:#999">拖拽文件到此处或点击选择</p><input type="file" id="fileInput" style="display:none"></div><progress id="uploadProgress" max="100"></progress></div>
+<div class="card"><h2>我的文件</h2><div id="myFileList"><p style="color:#999;text-align:center;padding:20px">暂无文件</p></div></div>
 </div>
 <div class="tab-page" id="page-users">
-<div class="card"><h2>鐢ㄦ埛鍒楄〃</h2><table class="user-table"><thead><tr><th>ID</th><th>鐢ㄦ埛鍚?/th><th>鏄剧ず鍚嶇О</th><th>瑙掕壊</th><th>鍒涘缓鏃堕棿</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
+<div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
 </div>
 <div class="tab-page" id="page-clouddata">
 <div class="card" style="background:#edf7ec;padding:10px">
 <div style="margin-bottom:10px">
-<span style="font-size:18px">閫夋嫨椤圭洰:</span>
+<span style="font-size:18px">选择项目:</span>
 <select id="cdpSelect" style="width:300px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc"></select>
-<button onclick="createProject()" class="btn btn-info" style="margin:0 5px">鍒涘缓浜戞暟鎹」鐩?/button>
-<button onclick="deleteProject()" class="btn btn-danger">鍒犻櫎褰撳墠閫夋嫨椤圭洰</button>
-<button onclick="resetAllRead(document.getElementById('cdpSelect').value)" class="btn btn-success" style="margin:0 5px">璁剧疆鍏ㄩ儴鏁版嵁鐘舵€佷负鏈鍙?/button>
+<button onclick="createProject()" class="btn btn-info" style="margin:0 5px">创建云数据项目</button>
+<button onclick="deleteProject()" class="btn btn-danger">删除当前选择项目</button>
+<button onclick="resetAllRead(document.getElementById('cdpSelect').value)" class="btn btn-success" style="margin:0 5px">设置全部数据状态为未读取</button>
 </div>
 <div style="margin-bottom:10px">
-<span style="font-size:16px">鎬绘暟:</span><span id="cdTotal" style="font-size:17px;font-weight:bold">0</span>
-<span style="font-size:16px;margin-left:15px">鏈鍙?</span><span id="cdNoRead" style="font-size:17px;font-weight:bold;color:orange">0</span>
-<span style="font-size:16px;margin-left:15px">宸茶鍙?</span><span id="cdRead" style="font-size:17px;font-weight:bold;color:green">0</span>
-<button onclick="loadCloudDataStats(document.getElementById('cdpSelect').value)" class="btn btn-info" style="margin-left:10px">鍒锋柊</button>
+<span style="font-size:16px">总数:</span><span id="cdTotal" style="font-size:17px;font-weight:bold">0</span>
+<span style="font-size:16px;margin-left:15px">未读取:</span><span id="cdNoRead" style="font-size:17px;font-weight:bold;color:orange">0</span>
+<span style="font-size:16px;margin-left:15px">已读取:</span><span id="cdRead" style="font-size:17px;font-weight:bold;color:green">0</span>
+<button onclick="loadCloudDataStats(document.getElementById('cdpSelect').value)" class="btn btn-info" style="margin-left:10px">刷新</button>
 </div>
 <div style="overflow:auto">
 <table class="user-table" style="font-size:13px">
-<thead><tr><th>椤圭洰ID</th><th>椤圭洰鍚嶇О</th><th>璁块棶Token</th><th>椤圭洰鍒涘缓鏃堕棿</th><th>鎿嶄綔鍛戒护</th></tr></thead>
+<thead><tr><th>项目ID</th><th>项目名称</th><th>访问Token</th><th>项目创建时间</th><th>操作命令</th></tr></thead>
 <tbody id="cdpTableBody"></tbody>
 </table>
 </div>
@@ -605,29 +624,29 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <h5 style="margin:1px"></h5>
 <div class="card" style="background:#fff4f4;padding:10px">
 <div style="margin-bottom:10px">
-<span style="font-size:18px">閫夋嫨鏁版嵁鐘舵€?</span>
+<span style="font-size:18px">选择数据状态:</span>
 <select id="cdQueryType" style="width:200px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc">
-<option value="-1">鎵€鏈夋暟鎹?/option>
-<option value="0">鏈鍙栫殑鏁版嵁</option>
-<option value="1">宸茶鍙栫殑鏁版嵁</option>
+<option value="-1">所有数据</option>
+<option value="0">未读取的数据</option>
+<option value="1">已读取的数据</option>
 </select>
-<button onclick="exportCD('all')" class="btn btn-success">瀵煎嚭鎵€鏈夋暟鎹?/button>
-<button onclick="exportCD('unread')" class="btn btn-success">瀵煎嚭鎵€鏈夋湭璇诲彇鏁版嵁</button>
-<button onclick="exportCD('read')" class="btn btn-success">瀵煎嚭鎵€鏈夊凡璇诲彇鏁版嵁</button>
+<button onclick="exportCD('all')" class="btn btn-success">导出所有数据</button>
+<button onclick="exportCD('unread')" class="btn btn-success">导出所有未读取数据</button>
+<button onclick="exportCD('read')" class="btn btn-success">导出所有已读取数据</button>
 <div class="btn-group" style="display:inline-block;margin-left:5px">
-<button class="btn btn-danger dropdown-toggle" onclick="var m=this.nextElementSibling;m.style.display=m.style.display=='none'?'block':'none'">鍒犻櫎鏁版嵁 &#9660;</button>
+<button class="btn btn-danger dropdown-toggle" onclick="var m=this.nextElementSibling;m.style.display=m.style.display=='none'?'block':'none'">删除数据 &#9660;</button>
 <ul style="display:none;position:absolute;background:#fff;border:1px solid #ccc;list-style:none;padding:5px;z-index:10">
-<li><a href="#" onclick="batchDelete('all');return false" style="color:#333">鍒犻櫎鎵€鏈夋暟鎹?/a></li>
-<li><a href="#" onclick="batchDelete('read');return false" style="color:#333">鍒犻櫎鎵€鏈夊凡璇诲彇鏁版嵁</a></li>
-<li><a href="#" onclick="batchDelete('unread');return false" style="color:#333">鍒犻櫎鎵€鏈夋湭璇诲彇鏁版嵁</a></li>
+<li><a href="#" onclick="batchDelete('all');return false" style="color:#333">删除所有数据</a></li>
+<li><a href="#" onclick="batchDelete('read');return false" style="color:#333">删除所有已读取数据</a></li>
+<li><a href="#" onclick="batchDelete('unread');return false" style="color:#333">删除所有未读取数据</a></li>
 </ul>
 </div>
-<input id="cdSearchText" type="text" style="width:300px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc;margin-left:10px" placeholder="杈撳叆鏁版嵁鍚嶅瓧鎼滅储鏁版嵁" onkeydown="if(event.keyCode==13)searchCD()">
-<button onclick="searchCD()" class="btn btn-info" style="margin-left:5px">馃攳</button>
+<input id="cdSearchText" type="text" style="width:300px;display:inline-block;padding:4px;border-radius:4px;border:1px solid #ccc;margin-left:10px" placeholder="输入数据名字搜索数据" onkeydown="if(event.keyCode==13)searchCD()">
+<button onclick="searchCD()" class="btn btn-info" style="margin-left:5px">🔍</button>
 </div>
 <div style="overflow:auto">
 <table class="user-table" style="font-size:13px">
-<thead><tr><th>Id</th><th>鏁版嵁鍚嶅瓧</th><th>鏁版嵁</th><th>鏁版嵁MD5</th><th>鏇存柊鏃堕棿</th><th>鐘舵€?/th><th>鏁版嵁鎿嶄綔</th></tr></thead>
+<thead><tr><th>Id</th><th>数据名字</th><th>数据</th><th>数据MD5</th><th>更新时间</th><th>状态</th><th>数据操作</th></tr></thead>
 <tbody id="cdDataBody"></tbody>
 </table>
 </div>
@@ -647,32 +666,33 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <script>
 function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='upload')loadMyFiles();if(id==='users')loadUsers();if(id==='clouddata')initCloudData()}
 document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
-async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('涓婁紶鎴愬姛','success');loadMyFiles()}catch(e){showToast('涓婁紶澶辫触','error')}document.getElementById('uploadProgress').style.display='none'}
+async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('上传成功','success');loadMyFiles()}catch(e){showToast('上传失败','error')}document.getElementById('uploadProgress').style.display='none'}
 async function loadDashboard(){try{var r=await fetch('/admin/stats',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();document.getElementById('statUsers').textContent=d.users;document.getElementById('statFiles').textContent=d.files;document.getElementById('statSize').textContent=d.size_display;document.getElementById('statAdmin').textContent=d.admins}catch(e){}}
-async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">鏆傛棤鏂囦欢</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B | '+f.owner+'</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>涓嬭浇</a></div></li>'}h+='</ul>';document.getElementById('fileList').innerHTML=h}catch(e){}}
-async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
-async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">鏆傛棤鏂囦欢</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>涓嬭浇</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">鍒犻櫎</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
-async function delFile(id){if(!confirm('纭畾鍒犻櫎锛?))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('鍒犻櫎鎴愬姛','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
+async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B | '+f.owner+'</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a></div></li>'}h+='</ul>';document.getElementById('fileList').innerHTML=h}catch(e){}}
+function cpwUser(uid){var np=prompt('新密码(>4位)');if(!np||np.length<4){if(np)alert('需>=4字符');return}fetch('/admin/user/'+uid+'/change_password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_password:np}),credentials:'include'}).then(function(r){return r.json()}).then(function(d){alert(d.detail||'成功');loadUsers()})}
+async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td><td><button onclick="cpwUser('+u.id+')" style="cursor:pointer">改密码</button></td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
+async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">删除</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
+async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
 
-async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'鍏ㄩ儴',read:'宸茶鍙?,unread:'鏈鍙?};if(!confirm('纭畾瀵煎嚭'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
+async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'全部',read:'已读取',unread:'未读取'};if(!confirm('确定导出'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
 
-async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'鍏ㄩ儴',read:'宸茶鍙?,unread:'鏈鍙?};if(!confirm('纭畾瀵煎嚭'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
+async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'全部',read:'已读取',unread:'未读取'};if(!confirm('确定导出'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
 
 
-function loadCloudDataProjects(){fetch('/admin/cdprojects',{credentials:'include'}).then(function(r){return r.json()}).then(function(ps){window.cdProjects=ps;var sel=document.getElementById('cdpSelect');if(!sel)return;sel.innerHTML='';for(var i=0;i<ps.length;i++){var o=document.createElement('option');o.value=ps[i].id;o.text='ID:'+ps[i].id+' '+ps[i].name;sel.appendChild(o)}var p=ps[0];if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">閲嶇疆TOKEN</button></td></tr>';loadCloudDataStats(p.id);loadCloudDataList(p.id,1)}})}
+function loadCloudDataProjects(){fetch('/admin/cdprojects',{credentials:'include'}).then(function(r){return r.json()}).then(function(ps){window.cdProjects=ps;var sel=document.getElementById('cdpSelect');if(!sel)return;sel.innerHTML='';for(var i=0;i<ps.length;i++){var o=document.createElement('option');o.value=ps[i].id;o.text='ID:'+ps[i].id+' '+ps[i].name;sel.appendChild(o)}var p=ps[0];if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">重置TOKEN</button></td></tr>';loadCloudDataStats(p.id);loadCloudDataList(p.id,1)}})}
 function loadCloudDataStats(pid){fetch('/admin/cdprojects/stats/'+pid,{credentials:'include'}).then(function(r){return r.json()}).then(function(s){document.getElementById('cdTotal').textContent=s.total;document.getElementById('cdNoRead').textContent=s.noRead;document.getElementById('cdRead').textContent=s.read})}
-function loadCloudDataList(pid,page){var q=document.getElementById('cdQueryType').value;var s=document.getElementById('cdSearchText').value;var u='/admin/cddata/'+pid+'?page='+page+'&limit=20&queryType='+q+(s?'&search='+encodeURIComponent(s):'');fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){var tb=document.getElementById('cdDataBody');if(!tb)return;tb.innerHTML='';for(var i=0;i<d.items.length;i++){var x=d.items[i];var st=x.read?'宸茶鍙?:'鏈鍙?;var sc=st==='宸茶鍙??'green':'orange';var btnT=x.read?'淇敼涓烘湭璇诲彇':'淇敼涓哄凡璇诲彇';tb.innerHTML+='<tr><td>'+x.id+'</td><td>'+x.name+'</td><td><a href=\"#\" onclick=\"downloadCD('+x.id+');return false\">(鐐瑰嚮涓嬭浇)</a></td><td>'+x.md5+'</td><td>'+(x.t||'')+'</td><td><span style=\"color:'+sc+'\">'+st+'</span></td><td><button onclick=\"toggleCDState('+x.id+')\" class=\"mybtn btn btn-danger\">'+btnT+'</button> <button onclick=\"if(confirm('纭畾鍒犻櫎?'))deleteCD('+x.id+')\" class=\"mybtn btn btn-danger\">鍒犻櫎鏁版嵁</button></td></tr>'}window.cdPage=page;window.cdTotal=d.total;var pn=Math.ceil(d.total/20)||1;var ph='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+',1);return false\">棣栭〉</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.max(1,page-1)+');return false\">涓婁竴椤?/a></li>';for(var i=1;i<=pn;i++){ph+='<li class=\"'+(i===page?'active':'')+'\"><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+i+');return false\">'+i+'</a></li>'}ph+='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.min(pn,page+1)+');return false\">涓嬩竴椤?/a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+pn+');return false\">灏鹃〉</a></li>';document.getElementById('cdPagination').innerHTML=ph})}
+function loadCloudDataList(pid,page){var q=document.getElementById('cdQueryType').value;var s=document.getElementById('cdSearchText').value;var u='/admin/cddata/'+pid+'?page='+page+'&limit=20&queryType='+q+(s?'&search='+encodeURIComponent(s):'');fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){var tb=document.getElementById('cdDataBody');if(!tb)return;tb.innerHTML='';for(var i=0;i<d.items.length;i++){var x=d.items[i];var st=x.read?'已读取':'未读取';var sc=st==='已读取'?'green':'orange';var btnT=x.read?'修改为未读取':'修改为已读取';tb.innerHTML+='<tr><td>'+x.id+'</td><td>'+x.name+'</td><td><a href=\"#\" onclick=\"downloadCD('+x.id+');return false\">(点击下载)</a></td><td>'+x.md5+'</td><td>'+(x.t||'')+'</td><td><span style=\"color:'+sc+'\">'+st+'</span></td><td><button onclick=\"toggleCDState('+x.id+')\" class=\"mybtn btn btn-danger\">'+btnT+'</button> <button onclick=\"if(confirm('确定删除?'))deleteCD('+x.id+')\" class=\"mybtn btn btn-danger\">删除数据</button></td></tr>'}window.cdPage=page;window.cdTotal=d.total;var pn=Math.ceil(d.total/20)||1;var ph='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+',1);return false\">首页</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.max(1,page-1)+');return false\">上一页</a></li>';for(var i=1;i<=pn;i++){ph+='<li class=\"'+(i===page?'active':'')+'\"><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+i+');return false\">'+i+'</a></li>'}ph+='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.min(pn,page+1)+');return false\">下一页</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+pn+');return false\">尾页</a></li>';document.getElementById('cdPagination').innerHTML=ph})}
 function toggleCDState(cid){fetch('/admin/cddata/state/'+cid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){var pid=document.getElementById('cdpSelect').value;loadCloudDataList(pid,window.cdPage||1);loadCloudDataStats(pid)}})}
 function deleteCD(cid){var pid=document.getElementById('cdpSelect').value;fetch('/admin/cddata/'+cid,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataList(pid,window.cdPage||1);loadCloudDataStats(pid)})}
-function resetToken(pid){if(!confirm('閲嶇疆鍚庢棫Token澶辨晥锛岀‘瀹氶噸缃悧?'))return;fetch('/admin/cdprojects/resettoken/'+pid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){document.getElementById('cdpToken_'+pid).textContent=d.token;showToast('閲嶇疆鎴愬姛','success')}})}
-function resetAllRead(pid){if(!confirm('纭畾灏嗘墍鏈夋暟鎹涓烘湭璇诲彇?'))return;fetch('/admin/cdprojects/resetallread/'+pid,{method:'POST',credentials:'include'}).then(function(){loadCloudDataStats(pid);loadCloudDataList(pid,1)})}
-function createProject(){var n=prompt('璇疯緭鍏ラ」鐩悕绉?');if(!n)return;fetch('/admin/cdprojects',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({name:n})}).then(function(){loadCloudDataProjects();showToast('鍒涘缓鎴愬姛','success')})}
-function deleteProject(){var pid=document.getElementById('cdpSelect').value;if(!confirm('鍒犻櫎椤圭洰浼氭竻绌烘墍鏈夋暟鎹紝纭畾鍒犻櫎鍚?'))return;fetch('/admin/cdprojects/'+pid,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataProjects();showToast('鍒犻櫎鎴愬姛','success')})}
-function exportCD(m){var pid=document.getElementById('cdpSelect').value;var t={all:'鍏ㄩ儴',read:'宸茶鍙?,unread:'鏈鍙?};if(!confirm('纭畾瀵煎嚭'+t[m]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+m)}
-function batchDelete(m){var pid=document.getElementById('cdpSelect').value;var t={all:'鍏ㄩ儴鏁版嵁',read:'宸茶鍙栨暟鎹?,unread:'鏈鍙栨暟鎹?};if(!confirm('纭畾鍒犻櫎'+t[m]+'?'))return;fetch('/admin/cddata/batch/'+pid+'?mode='+m,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataList(pid,1);loadCloudDataStats(pid);showToast('鍒犻櫎鎴愬姛','success')})}
+function resetToken(pid){if(!confirm('重置后旧Token失效，确定重置吗?'))return;fetch('/admin/cdprojects/resettoken/'+pid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){document.getElementById('cdpToken_'+pid).textContent=d.token;showToast('重置成功','success')}})}
+function resetAllRead(pid){if(!confirm('确定将所有数据设为未读取?'))return;fetch('/admin/cdprojects/resetallread/'+pid,{method:'POST',credentials:'include'}).then(function(){loadCloudDataStats(pid);loadCloudDataList(pid,1)})}
+function createProject(){var n=prompt('请输入项目名称:');if(!n)return;fetch('/admin/cdprojects',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({name:n})}).then(function(){loadCloudDataProjects();showToast('创建成功','success')})}
+function deleteProject(){var pid=document.getElementById('cdpSelect').value;if(!confirm('删除项目会清空所有数据，确定删除吗?'))return;fetch('/admin/cdprojects/'+pid,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataProjects();showToast('删除成功','success')})}
+function exportCD(m){var pid=document.getElementById('cdpSelect').value;var t={all:'全部',read:'已读取',unread:'未读取'};if(!confirm('确定导出'+t[m]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+m)}
+function batchDelete(m){var pid=document.getElementById('cdpSelect').value;var t={all:'全部数据',read:'已读取数据',unread:'未读取数据'};if(!confirm('确定删除'+t[m]+'?'))return;fetch('/admin/cddata/batch/'+pid+'?mode='+m,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataList(pid,1);loadCloudDataStats(pid);showToast('删除成功','success')})}
 function searchCD(){var pid=document.getElementById('cdpSelect').value;loadCloudDataList(pid,1)}
 function downloadCD(cid){window.open('/admin/cddata/download/'+cid)}
-function initCloudData(){var sel=document.getElementById('cdpSelect');if(!sel)return;sel.onchange=function(){var pid=this.value;if(!pid)return;var p=window.cdProjects.find(function(x){return x.id==pid});if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">閲嶇疆TOKEN</button></td></tr>'}loadCloudDataStats(pid);loadCloudDataList(pid,1)};document.getElementById('cdQueryType').onchange=function(){var pid=sel.value;if(pid)loadCloudDataList(pid,1)};loadCloudDataProjects()}
+function initCloudData(){var sel=document.getElementById('cdpSelect');if(!sel)return;sel.onchange=function(){var pid=this.value;if(!pid)return;var p=window.cdProjects.find(function(x){return x.id==pid});if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">重置TOKEN</button></td></tr>'}loadCloudDataStats(pid);loadCloudDataList(pid,1)};document.getElementById('cdQueryType').onchange=function(){var pid=sel.value;if(pid)loadCloudDataList(pid,1)};loadCloudDataProjects()}
 document.addEventListener('DOMContentLoaded',initCloudData);
 </script>
 </body></html>"""
@@ -840,7 +860,7 @@ async def cddata_export(request: Request, pid: int, mode: str):
     writer = csv.writer(out)
     writer.writerow(['ID','Key','Value','Name','MD5','Time','Read'])
     for row in r:
-        writer.writerow([row['id'],row['k'],row['v'],row.get('name',''),row.get('md5',''),row['t'],'宸茶' if row['read'] else '鏈'])
+        writer.writerow([row['id'],row['k'],row['v'],row.get('name',''),row.get('md5',''),row['t'],'已读' if row['read'] else '未读'])
     csv_bytes = out.getvalue().encode('utf-8-sig')
     return Response(content=csv_bytes, media_type='text/csv', headers={'Content-Disposition': f'attachment; filename=clouddata_{pid}_{mode}.csv'})
 
