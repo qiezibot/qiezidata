@@ -2281,6 +2281,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
 .msg.success{color:#27ae60;background:#eafaf1}
 
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:9999;justify-content:center;align-items:flex-start;padding-top:12vh}
+.modal-content{background:#fff;border-radius:12px;padding:24px 28px;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);animation:modalIn .25s ease}
+.modal-close{float:right;font-size:22px;cursor:pointer;color:#999;line-height:1}.modal-close:hover{color:#333}
+.modal h3{margin:0 0 12px;font-size:16px;color:#333}
+.modal h4{margin:12px 0 8px;font-size:14px;color:#555}
+.form-group{margin-bottom:10px}.form-group label{display:block;font-size:12px;color:#666;margin-bottom:3px}
+.form-group input{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;outline:none;box-sizing:border-box}
+.form-group input:focus{border-color:#7c5cfc;box-shadow:0 0 0 2px rgba(124,92,252,0.15)}
+.modal .btn{background:linear-gradient(135deg,#7c5cfc,#5a3fd6);color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;width:auto;margin-top:4px}
+.modal .btn:hover{background:linear-gradient(135deg,#8b6dff,#6b51e6)}
+.modal .msg{font-size:12px;padding:6px 10px;margin-top:8px}
+@keyframes modalIn{from{opacity:0;transform:scale(.92) translateY(-10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
 
 
 </style></head><body><div class="card">
