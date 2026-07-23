@@ -4432,6 +4432,238 @@ async def cddata_download(request: Request, cid: int):
 
 
 
+
+# ===== Auth API - WeChat QR Code Authorization =====
+# Keys stored as "auth:{code}" in clouddata table, values = JSON
+# Project ID 1 (default) is used for auth data.
+
+AUTH_DEFAULT_PROJECT = 1
+
+def _auth_key(code: str) -> str:
+    return f"auth:{code}"
+
+@app.post('/api/auth/create')
+async def api_auth_create(request: Request):
+    """Create a new authorization code. Returns code + QR content."""
+    code = secrets.token_hex(16)  # 32-char hex code
+    qr_content = f"weixinauth://{code}"
+    auth_data = json.dumps({
+        "code": code,
+        "qr_content": qr_content,
+        "status": "pending",
+        "credential": None,
+        "created_at": datetime.utcnow().isoformat(),
+        "confirmed_at": None
+    })
+
+    key = _auth_key(code)
+    if use_pg:
+        async with db_pool.acquire() as conn:
+            await conn.execute(
+                'INSERT INTO clouddata(project_id,k,v) VALUES($1,$2,$3)',
+                AUTH_DEFAULT_PROJECT, key, auth_data
+            )
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            conn.execute(
+                'INSERT INTO clouddata(project_id,k,v) VALUES(?,?,?)',
+                (AUTH_DEFAULT_PROJECT, key, auth_data)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return JSONResponse({
+        "ok": True,
+        "code": code,
+        "qr_content": qr_content,
+        "expires_in": 300  # 5 minutes
+    })
+
+@app.get('/api/auth/qrcode/{code}')
+async def api_auth_qrcode(code: str, request: Request):
+    """Get QR code info for WeChat scanning."""
+    key = _auth_key(code)
+    if use_pg:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                'SELECT v FROM clouddata WHERE project_id=$1 AND k=$2',
+                AUTH_DEFAULT_PROJECT, key
+            )
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            row = conn.execute(
+                'SELECT v FROM clouddata WHERE project_id=? AND k=?',
+                (AUTH_DEFAULT_PROJECT, key)
+            ).fetchone()
+        finally:
+            conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="auth code not found")
+
+    try:
+        data = json.loads(row[0] if not use_pg else row['v'])
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=500, detail="invalid auth data")
+
+    return JSONResponse({
+        "ok": True,
+        "code": code,
+        "qr_content": data.get("qr_content", ""),
+        "status": data.get("status", "unknown"),
+        "created_at": data.get("created_at")
+    })
+
+@app.post('/api/auth/confirm/{code}')
+async def api_auth_confirm(code: str, request: Request):
+    """Confirm authorization (called by WeChat scan handler). Stores credential."""
+    key = _auth_key(code)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "detail": "invalid JSON body"}, status_code=400)
+
+    credential = body.get("credential", "").strip()
+    if not credential:
+        return JSONResponse({"ok": False, "detail": "credential is required"}, status_code=400)
+
+    if use_pg:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                'SELECT v FROM clouddata WHERE project_id=$1 AND k=$2',
+                AUTH_DEFAULT_PROJECT, key
+            )
+            if not row:
+                return JSONResponse({"ok": False, "detail": "auth code not found"}, status_code=404)
+            try:
+                data = json.loads(row['v'])
+            except (json.JSONDecodeError, TypeError):
+                return JSONResponse({"ok": False, "detail": "invalid auth data"}, status_code=500)
+
+            if data.get("status") != "pending":
+                return JSONResponse({"ok": False, "detail": f"code already {data.get('status')}"}, status_code=400)
+
+            data["status"] = "confirmed"
+            data["credential"] = credential
+            data["confirmed_at"] = datetime.utcnow().isoformat()
+
+            await conn.execute(
+                'UPDATE clouddata SET v=$1 WHERE project_id=$2 AND k=$3',
+                json.dumps(data, ensure_ascii=False), AUTH_DEFAULT_PROJECT, key
+            )
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            row = conn.execute(
+                'SELECT v FROM clouddata WHERE project_id=? AND k=?',
+                (AUTH_DEFAULT_PROJECT, key)
+            ).fetchone()
+            if not row:
+                return JSONResponse({"ok": False, "detail": "auth code not found"}, status_code=404)
+            try:
+                data = json.loads(row[0])
+            except (json.JSONDecodeError, TypeError):
+                return JSONResponse({"ok": False, "detail": "invalid auth data"}, status_code=500)
+
+            if data.get("status") != "pending":
+                return JSONResponse({"ok": False, "detail": f"code already {data.get('status')}"}, status_code=400)
+
+            data["status"] = "confirmed"
+            data["credential"] = credential
+            data["confirmed_at"] = datetime.utcnow().isoformat()
+
+            conn.execute(
+                'UPDATE clouddata SET v=? WHERE project_id=? AND k=?',
+                (json.dumps(data, ensure_ascii=False), AUTH_DEFAULT_PROJECT, key)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return JSONResponse({"ok": True, "code": code, "status": "confirmed"})
+
+@app.get('/api/auth/verify/{code}')
+async def api_auth_verify(code: str, request: Request):
+    """Check if auth code has been confirmed (for polling)."""
+    key = _auth_key(code)
+    if use_pg:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                'SELECT v FROM clouddata WHERE project_id=$1 AND k=$2',
+                AUTH_DEFAULT_PROJECT, key
+            )
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            row = conn.execute(
+                'SELECT v FROM clouddata WHERE project_id=? AND k=?',
+                (AUTH_DEFAULT_PROJECT, key)
+            ).fetchone()
+        finally:
+            conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="auth code not found")
+
+    try:
+        data = json.loads(row[0] if not use_pg else row['v'])
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=500, detail="invalid auth data")
+
+    status = data.get("status", "unknown")
+    return JSONResponse({
+        "ok": True,
+        "code": code,
+        "status": status,
+        "confirmed": status == "confirmed",
+        "confirmed_at": data.get("confirmed_at") if status == "confirmed" else None
+    })
+
+@app.get('/api/auth/token/{code}')
+async def api_auth_token(code: str, request: Request):
+    """Get the confirmed credential (for client apps to consume)."""
+    secret = request.query_params.get('secret', '')
+    if not secret or secret != SECRET_KEY:
+        return JSONResponse({"ok": False, "detail": "invalid secret"}, status_code=403)
+
+    key = _auth_key(code)
+    if use_pg:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                'SELECT v FROM clouddata WHERE project_id=$1 AND k=$2',
+                AUTH_DEFAULT_PROJECT, key
+            )
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            row = conn.execute(
+                'SELECT v FROM clouddata WHERE project_id=? AND k=?',
+                (AUTH_DEFAULT_PROJECT, key)
+            ).fetchone()
+        finally:
+            conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="auth code not found")
+
+    try:
+        data = json.loads(row[0] if not use_pg else row['v'])
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=500, detail="invalid auth data")
+
+    if data.get("status") != "confirmed":
+        return JSONResponse({"ok": False, "detail": "code not yet confirmed"}, status_code=400)
+
+    return JSONResponse({
+        "ok": True,
+        "code": code,
+        "credential": data.get("credential"),
+        "confirmed_at": data.get("confirmed_at")
+    })
+
 if __name__ == '__main__':
 
 
@@ -4457,6 +4689,7 @@ if __name__ == '__main__':
 
 
 # deploy 07/21/2026 03:27:38
+
 
 
 
