@@ -3285,7 +3285,7 @@ document.getElementById('myFileList').addEventListener('click',function(e){var b
 
 
 
-async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var r=await fetch('/upload',{method:'POST',credentials:'include',body:fd});if(!r.ok){if(r.status===401){window.location.href='/';return}throw Error()};showToast('上传成功','success');}catch(e){showToast('上传失败','error')}loadMyFiles();document.getElementById('uploadProgress').style.display='none'}
+async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var r=await fetch('/upload',{method:'POST',credentials:'include',body:fd});if(!r.ok){if(r.status===401){window.location.href='/';return}throw Error()};showToast('上传成功','success');}catch(e){showToast('上传失败','error')}await loadMyFiles();document.getElementById('uploadProgress').style.display='none'}
 
 
 
