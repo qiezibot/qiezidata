@@ -82,7 +82,7 @@ Multi-user + Admin Dashboard + File Management
 
 
 
-import os, uuid, mimetypes, sqlite3, secrets, hashlib
+import os, uuid, mimetypes, sqlite3, secrets, hashlib, urllib.parse
 
 
 
@@ -4424,7 +4424,7 @@ async def cddata_download(request: Request, cid: int):
 
 
 
-    return Response(content=data, media_type='text/plain', headers={'Content-Disposition': f'attachment; filename={r[0]["k"]}.txt'})
+    return Response(content=data, media_type='text/plain', headers={'Content-Disposition': f"attachment; filename*=UTF-8''{urllib.parse.quote(r[0]['k']+'.txt')}"})
 
 
 
