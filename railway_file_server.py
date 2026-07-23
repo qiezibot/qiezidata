@@ -552,6 +552,48 @@ async def set_user_admin(uid: int, request: Request):
 
 
 
+@app.post('/admin/user/{uid}/unset_admin')
+
+async def unset_user_admin(uid: int, request: Request):
+
+    admin_id = _require(request); admin_user = await _user(admin_id)
+
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
+
+    if admin_id == uid:
+        return JSONResponse({'ok':False,'detail':'不能取消自己的管理员'}, status_code=400)
+
+    if use_pg:
+
+        async with db_pool.acquire() as conn:
+
+            row = await conn.fetchrow('SELECT id FROM users WHERE id=$1', uid)
+
+            if not row:
+                return JSONResponse({'ok':False,'detail':'user not found'}, status_code=404)
+
+            await conn.execute('UPDATE users SET role=\'user\' WHERE id=$1', uid)
+
+    else:
+
+        conn = sqlite3.connect(DB_PATH)
+
+        cur = conn.cursor()
+
+        cur.execute('SELECT id FROM users WHERE id=?', (uid,))
+
+        if not cur.fetchone():
+            conn.close()
+            return JSONResponse({'ok':False,'detail':'user not found'}, status_code=404)
+
+        cur.execute('UPDATE users SET role=\'user\' WHERE id=?', (uid,))
+
+        conn.commit(); conn.close()
+
+    return JSONResponse({'ok':True,'detail':'已取消管理员'})
+
+
+
 @app.post('/admin/user/{uid}/set_id')
 
 
@@ -3214,7 +3256,7 @@ async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:
 
 
 
-async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'<span style="color:green">已是管理员</span>':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">删除</button><button data-uid="'+u.id+'" data-uname="'+u.username+'" class="set-admin-btn" style="margin-left:5px">设为管理员</button> <button data-uid="'+u.id+'" class="cpw-btn" style="margin-left:5px" onclick="adminChangePwd('+u.id+')">修改密码</button>')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
+async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'<span style="color:green">已是管理员</span><button style="margin-left:5px;color:#e74c3c;border:none;background:none;cursor:pointer" onclick="unsetAdmin('+u.id+')">取消管理员</button>':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">删除</button><button data-uid="'+u.id+'" data-uname="'+u.username+'" class="set-admin-btn" style="margin-left:5px">设为管理员</button> <button data-uid="'+u.id+'" class="cpw-btn" style="margin-left:5px" onclick="adminChangePwd('+u.id+')">修改密码</button>')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
 
 
 
@@ -3227,6 +3269,13 @@ document.getElementById('userTableBody').addEventListener('click',function(e){va
 
 
 document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.cpw-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));adminChangePwd(uid)})
+
+
+
+
+function unsetAdmin(uid){ if(confirm('确定要取消该用户的管理员资格吗?')){ fetch('/admin/user/'+uid+'/unset_admin',{method:'POST',credentials:'include'}).then(function(r){ if(r.ok){ alert('已取消管理员'); loadUsers(); } else { r.json().then(function(d){ alert(d.detail||'操作失败'); }); } }).catch(function(){ alert('请求失败'); }); } }
+
+
 
 
 
