@@ -514,9 +514,9 @@ async def init_db():
 
 async def set_user_admin(uid: int, request: Request):
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
     if use_pg:
 
