@@ -16,9 +16,9 @@ RUN mkdir -p /data/uploads
 # 环境变量
 ENV UPLOAD_DIR=/data/uploads
 ENV HOST=0.0.0.0
-ENV PORT=8000
+ENV PORT=8080
 
-EXPOSE 8000
+EXPOSE 8080
 
 # 启动服务
 CMD ["python", "railway_file_server.py"]
