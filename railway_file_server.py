@@ -3412,7 +3412,7 @@ function initCloudData(){var sel=document.getElementById('cdpSelect');if(!sel)re
 
 
 
-document.addEventListener('DOMContentLoaded',initCloudData);
+document.addEventListener('DOMContentLoaded',function(){initCloudData();loadDashboard();});
 function openProfile(){ document.getElementById('profileModal').style.display='flex'; fetch('/me',{credentials:'include'}).then(function(r){return r.json();}).then(function(u){ document.getElementById('profModalUser').value=u.username||''; document.getElementById('profModalDN').value=u.display_name||''; document.getElementById('profModalRole').value=u.role||''; }).catch(function(){}); }
 
 function openProfileModal(){ fetch('/me',{credentials:'include'}).then(function(r){return r.json();}).then(function(d){document.getElementById('profModalUser').value=d.username||'';document.getElementById('profModalDN').value=d.display_name||'';document.getElementById('profModalRole').value=d.role||'user';document.getElementById('profModalSaveMsg').style.display='none';document.getElementById('profModalOldPwd').value='';document.getElementById('profModalNewPwd').value='';document.getElementById('profModalNewPwd2').value='';document.getElementById('profModalPwdMsg').style.display='none';document.getElementById('profileModal').style.display='flex';}).catch(function(){alert('获取个人资料失败');}); }
