@@ -2281,7 +2281,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 
 .msg.success{color:#27ae60;background:#eafaf1}
 
-.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:9999;justify-content:center;align-items:flex-start;padding-top:12vh}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:9999;justify-content:center;align-items:center}
 .modal-content{background:#fff;border-radius:12px;padding:24px 28px;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);animation:modalIn .25s ease}
 .modal-close{float:right;font-size:22px;cursor:pointer;color:#999;line-height:1}.modal-close:hover{color:#333}
 .modal h3{margin:0 0 12px;font-size:16px;color:#333}
