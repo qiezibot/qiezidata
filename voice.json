@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "stt": "node stt_wrapper.cjs",
+    "tts": "node tts-edge.cjs"
+  }
+}

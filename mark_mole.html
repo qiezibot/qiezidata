@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>标痣工具</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; display: flex; justify-content: center; padding: 20px; font-family: system-ui; }
+.container { max-width: 1600px; width: 100%; }
+h2 { color: #fff; margin-bottom: 12px; }
+h3 { color: #ccc; margin-top: 16px; margin-bottom: 8px; }
+.image-wrapper { position: relative; display: inline-block; max-width: 100%; }
+.image-wrapper img { max-width: 100%; cursor: crosshair; display: block; }
+canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+.coords { margin-top: 12px; color: #eee; font-size: 14px; }
+.controls { margin: 12px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.controls button { padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.btn-add { background: #e74c3c; color: #fff; }
+.btn-add:hover { background: #c0392b; }
+.btn-undo { background: #3498db; color: #fff; }
+.btn-undo:hover { background: #2980b9; }
+.btn-clear { background: #555; color: #fff; }
+.btn-clear:hover { background: #444; }
+.btn-process { background: #27ae60; color: #fff; font-weight: bold; padding: 10px 30px; }
+.btn-process:hover { background: #219a52; }
+input[type=range] { width: 120px; }
+label { color: #aaa; font-size: 13px; }
+.marked { border: 2px solid #e74c3c; border-radius: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>🖱️ 点击标记痣的位置</h2>
+  <div class="controls">
+    <button class="btn-add" onclick="mode='add'">➕ 添加标记</button>
+    <button class="btn-undo" onclick="undo()">↩ 撤销</button>
+    <button class="btn-clear" onclick="clearAll()">🗑️ 清空</button>
+    <label>笔刷大小: <span id="sizeLabel">30</span></label>
+    <input type="range" id="brushSize" min="10" max="100" value="30" oninput="sizeLabel.textContent=this.value">
+    <span style="color:#999;margin-left:12px;">当前: <span id="modeLabel" style="color:#e74c3c;font-weight:bold;">添加模式</span></span>
+  </div>
+  <div class="image-wrapper">
+    <img id="sourceImage" class="marked" src="cropped_wedding.jpg">
+    <canvas id="overlay"></canvas>
+  </div>
+  <div class="coords" id="coordDisplay">
+    点击图片上的痣 → 自动记录坐标
+  </div>
+  <div class="controls">
+    <button class="btn-process" onclick="processMoles()">🚀 提交去痣</button>
+    <span id="status" style="color:#2ecc71;margin-left:12px;"></span>
+  </div>
+  <h3>已标记的痣 (<span id="countLabel">0</span>)</h3>
+  <pre id="moleList" style="color:#aaa;font-size:12px;background:#16213e;padding:12px;border-radius:6px;max-height:300px;overflow:auto;">还没有标记</pre>
+</div>
+<script>
+const img = document.getElementById('sourceImage');
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+let mode = 'add';
+let spots = []; // {x, y, r}
+let dragging = -1;
+
+function resizeCanvas() {
+  const rect = img.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+  draw();
+}
+
+// Resize after image fully loaded AND anytime window resizes
+img.onload = () => { setTimeout(resizeCanvas, 100); };
+window.addEventListener('resize', resizeCanvas);
+
+function getScale() {
+  return canvas.width / img.naturalWidth;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const scale = getScale();
+  spots.forEach((s, i) => {
+    const sx = s.x * scale;
+    const sy = s.y * scale;
+    const sr = s.r * scale;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.25)';
+    ctx.fill();
+    ctx.strokeStyle = '#e74c3c';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Crosshair
+    ctx.beginPath();
+    ctx.moveTo(sx - sr - 4, sy);
+    ctx.lineTo(sx + sr + 4, sy);
+    ctx.moveTo(sx, sy - sr - 4);
+    ctx.lineTo(sx, sy + sr + 4);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('#' + (i+1), sx + sr + 6, sy + 4);
+  });
+  updateList();
+}
+
+function getCanvasXY(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scale = getScale();
+  return {
+    cx: (e.clientX - rect.left) / scale,
+    cy: (e.clientY - rect.top) / scale
+  };
+}
+
+canvas.onclick = (e) => {
+  const {cx, cy} = getCanvasXY(e);
+  const r = parseInt(document.getElementById('brushSize').value);
+  
+  if (mode === 'add') {
+    spots.push({x: cx, y: cy, r: r, x2:0, y2:0});
+    document.getElementById('coordDisplay').textContent = `✅ 已标记 #${spots.length}: (${Math.round(cx)}, ${Math.round(cy)}) 半径=${r}`;
+    draw();
+  }
+};
+
+canvas.onmousedown = (e) => {
+  if (mode !== 'add') return;
+  const {cx, cy} = getCanvasXY(e);
+  // Check if clicking near an existing spot to remove it
+  for (let i = spots.length - 1; i >= 0; i--) {
+    const dx = cx - spots[i].x;
+    const dy = cy - spots[i].y;
+    if (dx*dx + dy*dy < (spots[i].r + 10) * (spots[i].r + 10)) {
+      spots.splice(i, 1);
+      document.getElementById('coordDisplay').textContent = `🗑️ 移除 #${i+1}`;
+      draw();
+      return;
+    }
+  }
+};
+
+function undo() {
+  if (spots.length > 0) {
+    spots.pop();
+    document.getElementById('coordDisplay').textContent = `↩ 撤销，剩余 ${spots.length} 个`;
+    draw();
+  }
+}
+
+function clearAll() {
+  spots = [];
+  document.getElementById('coordDisplay').textContent = '🗑️ 已清空';
+  draw();
+}
+
+function updateList() {
+  document.getElementById('countLabel').textContent = spots.length;
+  if (spots.length === 0) {
+    document.getElementById('moleList').textContent = '还没有标记';
+    return;
+  }
+  // Output format: Python code snippet
+  let text = `# 粘贴到控制台执行去痣\n`;
+  text += `moles = [\n`;
+  spots.forEach((s, i) => {
+    text += `    # #${i+1} 痣\n`;
+    text += `    {"x": ${Math.round(s.x)}, "y": ${Math.round(s.y)}, "r": ${s.r}},\n`;
+  });
+  text += `]\n`;
+  document.getElementById('moleList').textContent = text;
+}
+
+async function processMoles() {
+  if (spots.length === 0) { alert('请先标记痣的位置！'); return; }
+  
+  const data = {
+    action: processMoles,
+    spots: spots,
+    brushSize: parseInt(document.getElementById('brushSize').value)
+  };
+  
+  document.getElementById('status').textContent = '⏳ 处理中...';
+  
+  // Save to file for the agent to pick up
+  const blob = new Blob([JSON.stringify({spots: spots}, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mole_data.json';
+  a.click();
+  
+  document.getElementById('status').textContent = '✅ 数据已导出 mole_data.json！让AI处理吧';
+}
+</script>
+</body>
+</html>

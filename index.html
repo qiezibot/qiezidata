@@ -1,0 +1,198 @@
+\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据</title><style>
+
+
+
+*{margin:0;padding:0;box-sizing:border-box}
+
+
+
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+
+
+
+.card{background:rgba(255,255,255,.95);border-radius:16px;padding:40px 36px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:400px;width:100%;text-align:center}
+
+
+
+.card h1{font-size:28px;color:#333;margin-bottom:4px}
+
+
+
+.card .subtitle{color:#999;margin-bottom:24px;font-size:14px}
+
+
+
+.tabs{display:flex;margin-bottom:24px;border-bottom:2px solid #eee}
+
+
+
+.tab{flex:1;text-align:center;padding:10px;cursor:pointer;color:#999;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-2px;font-size:14px}
+
+
+
+.tab.active{color:#667eea;border-bottom-color:#667eea}
+
+
+
+.form{display:none}
+
+
+
+.form.active{display:block}
+
+
+
+.input-group{margin-bottom:16px;text-align:left}
+
+
+
+.input-group label{display:block;font-size:13px;color:#555;margin-bottom:4px}
+
+
+
+.input-group input{width:100%;padding:11px 14px;border:2px solid #eee;border-radius:8px;font-size:14px;outline:none;transition:border .2s}
+
+
+
+.input-group input:focus{border-color:#667eea}
+
+
+
+.btn{width:100%;padding:11px;background:#667eea;color:#fff;border:none;border-radius:8px;font-size:15px;cursor:pointer;transition:background .2s}
+
+
+
+.btn:hover{background:#5a6fd6}
+
+
+
+.msg{font-size:13px;margin-top:10px;display:none;padding:8px 12px;border-radius:6px;color:#c0392b;background:#fdecea}
+
+
+
+.msg.success{color:#27ae60;background:#eafaf1}
+
+
+
+</style></head><body><div class="card">
+
+
+
+<h1>茄子数据</h1><p class="subtitle">文件管理 v2.1</p>
+
+
+
+<div class="tabs"><div class="tab active" onclick="switchTab('login')">登录</div><div class="tab" onclick="switchTab('register')">注册</div></div>
+
+
+
+<div class="form active" id="loginForm">
+
+
+
+<form method="post" action="/login">
+
+
+
+<div class="input-group"><label>用户名</label><input type="text" name="username" placeholder="输入用户名" required autofocus></div>
+
+
+
+<div class="input-group"><label>密码</label><input type="password" name="password" placeholder="输入密码" required></div>
+
+
+
+<button class="btn" type="submit">登录</button>
+
+
+
+</form>
+
+
+
+<div class="msg" id="loginError">用户名或密码错误</div>
+
+
+
+</div>
+
+
+
+<div class="form" id="registerForm">
+
+
+
+<form method="post" action="/register" onsubmit="return validateRegister()">
+
+
+
+<div class="input-group"><label>用户名</label><input type="text" name="username" id="regUser" placeholder="2-20个字符" required minlength="2" maxlength="20" pattern="^[a-zA-Z0-9_]+$"></div>
+
+
+
+<div class="input-group"><label>显示名称</label><input type="text" name="display_name" placeholder="选填" maxlength="30"></div>
+
+
+
+<div class="input-group"><label>密码</label><input type="password" name="password" id="regPass" placeholder="至少4个字符" required minlength="4"></div>
+
+
+
+<button class="btn" type="submit">注册</button>
+
+
+
+</form>
+
+
+
+<div class="msg" id="regError"></div>
+
+
+
+</div>
+
+
+
+</div>
+
+
+
+<script>
+
+
+
+var p=new URLSearchParams(window.location.search);if(p.get('e')==='1')document.getElementById('loginError').style.display='block';if(p.get('reg')==='1'){document.getElementById('loginError').textContent='注册成功，请登录';document.getElementById('loginError').className='msg success';document.getElementById('loginError').style.display='block'}
+
+
+
+function switchTab(n){document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});document.querySelectorAll('.form').forEach(function(f){f.classList.remove('active')});if(n==='login'){document.querySelector('.tab:first-child').classList.add('active');document.getElementById('loginForm').classList.add('active')}else{document.querySelector('.tab:last-child').classList.add('active');document.getElementById('registerForm').classList.add('active')}}
+
+
+
+function validateRegister(){var p1=document.getElementById('regPass').value;if(p1.length<4){document.getElementById('regError').textContent='密码太短';document.getElementById('regError').style.display='block';return false}return true}
+
+
+
+</script><script>
+(function(){var r=document.body.dataset.role||'';if(r!='admin'){document.querySelectorAll('.nav-item').forEach(function(n){if(n.getAttribute('onclick')&&n.getAttribute('onclick').indexOf('users')>=0)n.style.display='none'});}})();
+</script>
+<script>
+document.addEventListener("DOMContentLoaded",function(){
+  var els=document.querySelectorAll("[onclick*='openProfile']");
+  for(var i=0;i<els.length;i++){
+    els[i].addEventListener("click",function(e){
+      e.preventDefault();
+      var m=document.getElementById("profileModal");
+      if(m){m.style.display="flex";}
+      fetch("/me",{credentials:"include"}).then(function(r){return r.json();}).then(function(u){
+        var i1=document.getElementById("profModalUser");if(i1)i1.value=u.username||"";
+        var i2=document.getElementById("profModalDN");if(i2)i2.value=u.display_name||"";
+        var i3=document.getElementById("profModalRole");if(i3)i3.value=u.role||"";
+      }).catch(function(){});
+    });
+  }
+});
+</script>
+
+</body></html>

@@ -1,0 +1,11 @@
+HTTP/1.1 405 Method Not Allowed
+allow: POST
+Content-Type: application/json
+Date: Wed, 22 Jul 2026 07:23:41 GMT
+Server: railway-hikari
+x-railway-request-id: fHl_H36qQuqBu8hxCYBc-A
+Content-Length: 31
+x-hikari-trace: sjc1.qeyn
+x-railway-edge: sjc1
+Connection: keep-alive
+

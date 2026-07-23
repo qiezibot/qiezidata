@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import sys, os; sys.stdout.write("=== STARTING ===\nPORT=" + os.environ.get('PORT','8000') + "\n"); sys.stdout.flush()
 """
 Fil
             await conn.execute('CREATE TABLE IF NOT EXISTS clouddata_projects(id SERIAL PRIMARY KEY,name VARCHAR(255) NOT NULL,token VARCHAR(64) NOT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)')
@@ -413,6 +414,34 @@ async def admin_users(request: Request):
     rows = await db_fetch('SELECT id,username,display_name,role,created_at FROM users ORDER BY id' if not use_pg else 'SELECT id,username,display_name,role,created_at FROM users ORDER BY id')
     return [dict(r) for r in rows]
 
+@app.post('/user/change_password')
+async def user_change_password(request: Request):
+    uid = _require(request); user = await _user(uid)
+    if not user: raise HTTPException(status_code=401)
+    body = await request.json()
+    np = body.get('new_password','')
+    if len(np) < 4: raise HTTPException(status_code=400, detail='密码至少4位')
+    h = _hash(np)
+    if use_pg:
+        await conn.execute('UPDATE users SET password_hash=$1 WHERE id=$2', h, uid)
+    else:
+        db_execute('UPDATE users SET password_hash=? WHERE id=?', h, uid)
+    return {'detail': '修改成功'}
+
+@app.post('/admin/user/{uid}/change_password')
+async def admin_change_password(request: Request, uid: int):
+    au = _require(request); admin = await _user(au)
+    if not admin or admin.get('role') != 'admin': raise HTTPException(status_code=403)
+    body = await request.json()
+    np = body.get('new_password','')
+    if len(np) < 4: raise HTTPException(status_code=400, detail='密码至少4位')
+    h = _hash(np)
+    if use_pg:
+        await conn.execute('UPDATE users SET password_hash=$1 WHERE id=$2', h, uid)
+    else:
+        db_execute('UPDATE users SET password_hash=? WHERE id=?', h, uid)
+    return {'detail': '修改成功'}
+
 @app.get('/admin/files')
 async def admin_files(request: Request):
     uid = _require(request); user = await _user(uid)
@@ -455,6 +484,77 @@ async def exc_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=getattr(exc,'status_code',500), content={'detail': str(exc.detail if hasattr(exc,'detail') else exc)})
 
 # ===== HTML =====
+_USER = """\
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据 - 用户中心</title><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f0f2f5;color:#333;display:flex;min-height:100vh}
+.sidebar{width:220px;background:#fff;border-right:1px solid #e8e8e8;min-height:100vh;flex-shrink:0;display:flex;flex-direction:column}
+.sidebar .logo{padding:20px 16px 12px;font-size:20px;font-weight:700;color:#667eea;border-bottom:1px solid #f0f0f0;margin-bottom:8px}
+.sidebar .nav-item{padding:12px 20px;cursor:pointer;color:#555;font-size:14px;display:flex;align-items:center;gap:10px;border-left:3px solid transparent;transition:all .2s;margin:2px 0}
+.sidebar .nav-item:hover{background:#f5f7ff;color:#667eea}
+.sidebar .nav-item.active{background:#f0f2ff;color:#667eea;border-left-color:#667eea;font-weight:500}
+.sidebar .nav-item .icon{font-size:18px;width:24px;text-align:center}
+.sidebar .nav-spacer{flex:1}
+.sidebar .nav-bottom{border-top:1px solid #f0f0f0;padding:12px 20px;font-size:13px;color:#999}
+.sidebar .nav-bottom a{color:#999;text-decoration:none}
+.sidebar .nav-bottom a:hover{color:#667eea}
+.main{flex:1;display:flex;flex-direction:column}
+.header{background:#fff;border-bottom:1px solid #e8e8e8;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.header .title{font-size:16px;font-weight:500;color:#333}
+.header .user-area{display:flex;align-items:center;gap:16px;font-size:14px;color:#666}
+.header .user-area a{color:#e74c3c;text-decoration:none;font-size:13px}
+.content{padding:24px;flex:1;overflow-y:auto}
+.tab-page{display:none}
+.tab-page.active{display:block}
+.card{background:#fff;border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.card h2{font-size:16px;margin-bottom:16px;color:#444}
+.btn{display:inline-block;padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;text-decoration:none}
+.btn-primary{background:#667eea;color:#fff}
+.btn-primary:hover{background:#5a6fd6}
+.btn-danger{background:#e74c3c;color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px}
+.mybtn{border:none;cursor:pointer;padding:3px 7px;font-size:12px;border-radius:4px}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);align-items:center;justify-content:center;z-index:1000}
+.modal.active{display:flex}
+.modal-content{background:#fff;border-radius:10px;padding:24px;min-width:360px;max-width:500px}
+.modal-content h3{margin-bottom:12px}
+.modal-content .input-group{margin-bottom:14px}
+.modal-content .input-group label{display:block;font-size:13px;color:#555;margin-bottom:4px}
+.modal-content .input-group input{width:100%;padding:9px 12px;border:2px solid #eee;border-radius:6px;font-size:14px;outline:none}
+.modal-content .input-group input:focus{border-color:#667eea}
+.toast{position:fixed;top:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-size:14px;opacity:0;z-index:999;transition:opacity .3s}
+.file-table{width:100%;border-collapse:collapse;font-size:14px}
+.file-table th{text-align:left;padding:10px 12px;border-bottom:2px solid #eee;color:#666;font-weight:500;font-size:13px}
+.file-table td{padding:10px 12px;border-bottom:1px solid #f0f0f0;font-size:13px}
+</style></head><body>
+<div class="sidebar">
+<div class="logo">&#x1f34e; 茄子数据</div>
+<div class="nav-item active" onclick="switchPage('dashboard',this)"><span class="icon">&#x1f4ca;</span>仪表盘</div>
+<div class="nav-item" onclick="switchPage('files',this)"><span class="icon">&#x1f4c1;</span>我的文件</div>
+<div class="nav-item" onclick="switchPage('upload',this)"><span class="icon">&#x1f4e4;</span>上传</div>
+<div class="nav-spacer"></div>
+<div class="nav-bottom"><span>&#x1f464; <!--U--></span> &middot; <a href="javascript:showPwdModal()">改密码</a> &middot; <a href="/logout">退出</a></div>
+</div>
+<div class="main">
+<div class="header"><span class="title">用户中心</span><span class="user-area">&#x1f464; <!--U--></span></div>
+<div class="content">
+<div class="tab-page active" id="page-dashboard"><div class="card"><h2>我的文件</h2><div id="userFileList"></div></div></div>
+<div class="tab-page" id="page-files"><div class="card"><h2>我的文件</h2><table class="file-table"><thead><tr><th>文件名</th><th>大小</th><th>时间</th><th>操作</th></tr></thead><tbody id="myFilesBody"></tbody></table></div></div>
+<div class="tab-page" id="page-upload"><div class="card"><h2>上传文件</h2><form id="uploadForm" enctype="multipart/form-data"><div class="input-group"><input type="file" name="file" required></div><button class="btn btn-primary" type="submit">上传</button></form><div id="uploadStatus" style="margin-top:10px;font-size:13px"></div></div></div>
+</div></div>
+<div class="modal" id="pwdModal"><div class="modal-content"><h3>修改密码</h3><div class="input-group"><label>新密码</label><input type="password" id="newPwd" placeholder="至少4个字符"></div><div class="input-group"><label>确认密码</label><input type="password" id="newPwd2" placeholder="再次输入"></div><button class="btn btn-primary" onclick="changeMyPwd()">确认</button> <button class="btn btn-danger" onclick="hidePwdModal()">取消</button></div></div>
+<script>
+function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});if(el)el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='files')loadMyFiles();if(id==='dashboard')loadMyFiles()}
+function showPwdModal(){document.getElementById('pwdModal').classList.add('active')}
+function hidePwdModal(){document.getElementById('pwdModal').classList.remove('active')}
+function changeMyPwd(){var p=document.getElementById('newPwd').value;var p2=document.getElementById('newPwd2').value;if(p.length<4){alert('密码至少4位');return}if(p!==p2){alert('两次密码不一致');return}fetch('/user/change_password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_password:p}),credentials:'include'}).then(function(r){return r.json()}).then(function(d){alert(d.detail||'修改成功');hidePwdModal();document.getElementById('newPwd').value='';document.getElementById('newPwd2').value=''})}
+async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();var h='';for(var i=0;i<files.length;i++){var f=files[i];h+='<tr><td>'+f.name+'</td><td>'+f.size_display+'</td><td>'+f.upload_time+'</td><td><button class="mybtn btn-danger" onclick="delMyFile('+f.id+')">删除</button></td></tr>'}document.getElementById('myFilesBody').innerHTML=h;document.getElementById('userFileList').innerHTML=h?'<table class="file-table"><thead><tr><th>文件名</th><th>大小</th><th>时间</th><th>操作</th></tr></thead><tbody>'+h.substring(h.indexOf('<tbody>')+7,h.indexOf('</tbody>'))+'</tbody></table>':'<p>暂无文件</p>'}catch(e){}}
+function delMyFile(id){if(!confirm('确定删除?'))return;fetch('/delete/'+id,{method:'DELETE',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok)loadMyFiles();else alert(d.detail||'删除失败')})}
+document.getElementById('uploadForm').addEventListener('submit',function(e){e.preventDefault();var fd=new FormData(this);fetch('/upload',{method:'POST',body:fd,credentials:'include'}).then(function(r){return r.json()}).then(function(d){document.getElementById('uploadStatus').textContent=d.detail||'上传成功';if(d.ok)loadMyFiles()})});
+loadMyFiles();
+</script>
+</body></html>"""
+
 _LOGIN = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据</title><style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -579,7 +679,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <div class="card"><h2>我的文件</h2><div id="myFileList"><p style="color:#999;text-align:center;padding:20px">暂无文件</p></div></div>
 </div>
 <div class="tab-page" id="page-users">
-<div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
+<div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
 </div>
 <div class="tab-page" id="page-clouddata">
 <div class="card" style="background:#edf7ec;padding:10px">
@@ -652,7 +752,8 @@ document.getElementById('dropZone').addEventListener('click',function(){document
 async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('上传成功','success');loadMyFiles()}catch(e){showToast('上传失败','error')}document.getElementById('uploadProgress').style.display='none'}
 async function loadDashboard(){try{var r=await fetch('/admin/stats',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();document.getElementById('statUsers').textContent=d.users;document.getElementById('statFiles').textContent=d.files;document.getElementById('statSize').textContent=d.size_display;document.getElementById('statAdmin').textContent=d.admins}catch(e){}}
 async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B | '+f.owner+'</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a></div></li>'}h+='</ul>';document.getElementById('fileList').innerHTML=h}catch(e){}}
-async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
+async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td><td><button class="mybtn btn-danger" onclick="cpwUser('+u.id+')">改密码</button></td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
+function cpwUser(uid){var np=prompt('新密码(>=4位)');if(!np||np.length<4){if(np)alert('需>=4字符');return}fetch('/admin/user/'+uid+'/change_password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_password:np}),credentials:'include'}).then(function(r){return r.json()}).then(function(d){alert(d.detail||'成功');loadUsers()})}
 async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">删除</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
 async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
 

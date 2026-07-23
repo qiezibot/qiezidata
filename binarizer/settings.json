@@ -1,0 +1,15 @@
+{
+  "method": "Otsu",
+  "threshold": 128,
+  "window": 31,
+  "c_val": 10,
+  "blur_sigma": 0,
+  "sharpness": 0,
+  "equalize": false,
+  "clahe": false,
+  "contrast_stretch": false,
+  "invert": false,
+  "joystick_x": 417,
+  "joystick_y": 792,
+  "allow_diagonal": true
+}

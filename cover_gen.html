@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<canvas id="c" width="800" height="800"></canvas>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+const w=800,h=800;
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+// 深紫色C4D场景风格背景
+const g=ctx.createRadialGradient(400,400,100,400,400,500);
+g.addColorStop(0,'#5a1a7a');
+g.addColorStop(0.3,'#3d0d5e');
+g.addColorStop(0.6,'#2a0845');
+g.addColorStop(1,'#0d001a');
+ctx.fillStyle=g;
+ctx.fillRect(0,0,w,h);
+
+// 中心光晕
+const g2=ctx.createRadialGradient(400,380,50,400,380,300);
+g2.addColorStop(0,'rgba(120,80,247,0.35)');
+g2.addColorStop(0.4,'rgba(90,50,200,0.15)');
+g2.addColorStop(1,'rgba(0,0,0,0)');
+ctx.fillStyle=g2;
+ctx.fillRect(0,0,w,h);
+
+// 顶光
+const g3=ctx.createRadialGradient(400,0,0,400,0,400);
+g3.addColorStop(0,'rgba(255,200,150,0.12)');
+g3.addColorStop(0.5,'rgba(200,150,200,0.06)');
+g3.addColorStop(1,'rgba(0,0,0,0)');
+ctx.fillStyle=g3;
+ctx.fillRect(0,0,w,h);
+
+// 底部环境光
+const g4=ctx.createRadialGradient(400,800,0,400,800,400);
+g4.addColorStop(0,'rgba(100,50,150,0.08)');
+g4.addColorStop(1,'rgba(0,0,0,0)');
+ctx.fillStyle=g4;
+ctx.fillRect(0,0,w,h);
+
+// 卡片阴影
+ctx.shadowColor='rgba(0,0,0,0.5)';
+ctx.shadowBlur=40;
+ctx.shadowOffsetY=10;
+
+// 卡片主体 - 毛玻璃
+const cardG=ctx.createLinearGradient(100,250,700,550);
+cardG.addColorStop(0,'rgba(45,25,75,0.8)');
+cardG.addColorStop(0.5,'rgba(65,40,95,0.75)');
+cardG.addColorStop(1,'rgba(35,20,65,0.85)');
+roundRect(100,250,600,300,30);
+ctx.fillStyle=cardG;
+ctx.fill();
+
+ctx.shadowBlur=0;
+ctx.shadowOffsetY=0;
+
+// 卡片边框
+ctx.strokeStyle='rgba(120,80,247,0.25)';
+ctx.lineWidth=1.5;
+roundRect(100,250,600,300,30);
+ctx.stroke();
+
+// 卡片内发光
+const innerG=ctx.createRadialGradient(400,400,50,400,400,250);
+innerG.addColorStop(0,'rgba(150,100,220,0.05)');
+innerG.addColorStop(1,'rgba(0,0,0,0)');
+ctx.fillStyle=innerG;
+roundRect(105,255,590,290,25);
+ctx.fill();
+
+// 价格标签
+ctx.shadowColor='rgba(0,0,0,0.3)';
+ctx.shadowBlur=12;
+ctx.beginPath();
+ctx.ellipse(660,280,55,28,0,0,Math.PI*2);
+ctx.fillStyle='#ff4757';
+ctx.fill();
+ctx.shadowBlur=0;
+ctx.fillStyle='#fff';
+ctx.font='bold 28px "Microsoft YaHei",sans-serif';
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillText('¥2',660,278);
+
+// 主标题
+const titleG=ctx.createLinearGradient(200,180,600,180);
+titleG.addColorStop(0,'#b388ff');
+titleG.addColorStop(0.3,'#e8b4f8');
+titleG.addColorStop(0.6,'#b388ff');
+titleG.addColorStop(1,'#7c4dff');
+ctx.fillStyle=titleG;
+ctx.font='bold 48px "Microsoft YaHei",sans-serif';
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.shadowColor='rgba(120,80,247,0.4)';
+ctx.shadowBlur=15;
+ctx.fillText('AI实战入门',400,180);
+ctx.shadowBlur=0;
+
+// 副标题
+ctx.fillStyle='rgba(200,180,230,0.75)';
+ctx.font='22px "Microsoft YaHei",sans-serif';
+ctx.fillText('从零到一 轻松掌握',400,225);
+
+// 内容列表
+const items=[
+  'AI工具安装与配置',
+  '提示词编写技巧',
+  '实战项目案例解析',
+  '效率提升10倍方法',
+];
+ctx.textAlign='left';
+items.forEach((item,i)=>{
+  const y=310+i*50;
+  // 编号圆
+  ctx.beginPath();
+  ctx.arc(180,y,14,0,Math.PI*2);
+  ctx.fillStyle='rgba(124,77,255,0.25)';
+  ctx.fill();
+  ctx.strokeStyle='rgba(180,140,255,0.35)';
+  ctx.lineWidth=1;
+  ctx.stroke();
+  
+  ctx.fillStyle='#b388ff';
+  ctx.font='14px "Microsoft YaHei",sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(i+1,180,y);
+  
+  // 文字
+  ctx.fillStyle='rgba(220,210,240,0.85)';
+  ctx.font='20px "Microsoft YaHei",sans-serif';
+  ctx.textAlign='left';
+  ctx.fillText(item,210,y);
+});
+
+// 底部标签
+ctx.fillStyle='rgba(124,77,255,0.15)';
+ctx.strokeStyle='rgba(124,77,255,0.25)';
+ctx.lineWidth=1;
+roundRect(270,520,260,38,19);
+ctx.fill();
+ctx.stroke();
+ctx.fillStyle='rgba(200,180,230,0.65)';
+ctx.font='15px "Microsoft YaHei",sans-serif';
+ctx.textAlign='center';
+ctx.textBaseline='middle';
+ctx.fillText('📦 资料包 · 持续更新',400,539);
+
+// 装饰光点
+const lights=[
+  [120,140,3,'rgba(180,140,255,0.5)'],
+  [680,160,2,'rgba(255,200,150,0.4)'],
+  [160,570,2,'rgba(180,140,255,0.35)'],
+  [650,540,3,'rgba(120,80,247,0.4)'],
+  [400,100,2,'rgba(255,255,255,0.25)'],
+  [200,580,1.5,'rgba(180,140,255,0.3)'],
+];
+lights.forEach(([x,y,r,color])=>{
+  ctx.beginPath();
+  ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fillStyle=color;
+  ctx.fill();
+});
+
+// 几何装饰线条
+ctx.strokeStyle='rgba(124,77,255,0.12)';
+ctx.lineWidth=1;
+for(let i=0;i<5;i++){
+  ctx.beginPath();
+  ctx.arc(400+(i-2)*130,580,50,0,Math.PI*2);
+  ctx.stroke();
+}
+
+// 四个角L装饰
+ctx.strokeStyle='rgba(124,77,255,0.18)';
+ctx.lineWidth=2;
+[25,775].forEach(x=>{
+  [25,775].forEach(y=>{
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    ctx.lineTo(x+35,y);
+    ctx.moveTo(x,y);
+    ctx.lineTo(x,y+35);
+    ctx.stroke();
+  });
+});
+
+// 底部渐变条
+ctx.fillStyle='rgba(124,77,255,0.15)';
+ctx.fillRect(200,780,400,1);
+
+// 小菱形装饰
+for(let i=0;i<3;i++){
+  ctx.save();
+  ctx.translate(140+i*60,270);
+  ctx.rotate(Math.PI/4);
+  ctx.fillStyle='rgba(180,140,255,0.15)';
+  ctx.fillRect(-4,-4,8,8);
+  ctx.restore();
+}
+
+// 保存
+c.toBlob(function(blob){
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='cover_AI实战入门.jpg';
+  document.body.appendChild(a);
+  a.click();
+  document.title='DONE';
+},'image/jpeg',0.92);
+</script>
+</body>
+</html>

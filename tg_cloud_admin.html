@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TG 云端数据库</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    min-height: 100vh;
+}
+.header {
+    background: linear-gradient(135deg, #2b3a67, #496a81);
+    color: white;
+    padding: 20px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+.header h1 { font-size: 22px; font-weight: 600; }
+.header .status {
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.2);
+}
+.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+.tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 20px;
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.tab {
+    flex: 1;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.2s;
+    border: none;
+    background: white;
+}
+.tab:hover { background: #f5f7fa; }
+.tab.active { background: #2b3a67; color: white; }
+.tab .badge {
+    display: inline-block;
+    background: #e74c3c;
+    color: white;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    margin-left: 5px;
+}
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* KV 面板 */
+.kv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+}
+.kv-card {
+    background: white;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    position: relative;
+}
+.kv-card .key {
+    font-size: 13px;
+    color: #2b3a67;
+    font-weight: 600;
+    margin-bottom: 8px;
+    word-break: break-all;
+    font-family: 'Courier New', monospace;
+}
+.kv-card .value {
+    font-size: 14px;
+    color: #555;
+    word-break: break-all;
+    max-height: 100px;
+    overflow-y: auto;
+    background: #f8f9fa;
+    padding: 8px;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+.kv-card .time {
+    font-size: 11px;
+    color: #999;
+    margin-top: 8px;
+}
+.kv-card .del-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.kv-card .del-btn:hover { background: #fee; color: #e74c3c; }
+
+/* 笔记列表 */
+.note-list { display: flex; flex-direction: column; gap: 10px; }
+.note-card {
+    background: white;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.note-card .title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #2b3a67;
+    margin-bottom: 6px;
+}
+.note-card .content {
+    font-size: 14px;
+    color: #555;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+.note-card .meta {
+    font-size: 12px;
+    color: #999;
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+}
+.note-card .tags {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+.tag {
+    background: #e8edf5;
+    color: #496a81;
+    font-size: 11px;
+    padding: 2px 10px;
+    border-radius: 12px;
+}
+.note-card .del-btn {
+    background: none;
+    border: 1px solid #e0e0e0;
+    color: #999;
+    padding: 4px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.note-card .del-btn:hover { border-color: #e74c3c; color: #e74c3c; }
+
+/* 文件列表 */
+.file-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 12px;
+}
+.file-card {
+    background: white;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.file-card .name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2b3a67;
+    word-break: break-all;
+    margin-bottom: 6px;
+}
+.file-card .info {
+    font-size: 12px;
+    color: #888;
+}
+.file-card .desc {
+    font-size: 13px;
+    color: #555;
+    margin-top: 6px;
+}
+
+/* 输入区 */
+.add-section {
+    background: white;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.add-section input, .add-section textarea {
+    flex: 1;
+    min-width: 200px;
+    padding: 10px 14px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    transition: border 0.2s;
+}
+.add-section input:focus, .add-section textarea:focus { border-color: #496a81; }
+.add-section textarea { min-height: 60px; resize: vertical; }
+.btn {
+    padding: 10px 20px;
+    background: #2b3a67;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+.btn:hover { background: #3d5280; }
+.btn-sm {
+    padding: 6px 14px;
+    font-size: 12px;
+}
+.btn-danger { background: #e74c3c; }
+.btn-danger:hover { background: #c0392b; }
+
+/* 搜索 */
+.search-bar {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 16px;
+    outline: none;
+}
+.search-bar:focus { border-color: #496a81; }
+
+/* 统计 */
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.stat-card {
+    background: white;
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.stat-card .num {
+    font-size: 28px;
+    font-weight: 700;
+    color: #2b3a67;
+}
+.stat-card .label {
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    font-size: 14px;
+}
+.error {
+    background: #fdecea;
+    color: #c0392b;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+@media (max-width: 600px) {
+    .container { padding: 12px; }
+    .header { padding: 14px 16px; }
+    .header h1 { font-size: 18px; }
+    .kv-grid, .file-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📦 TG 云端数据库</h1>
+    <div class="status" id="status">检测中...</div>
+</div>
+
+<div class="container">
+    <!-- 统计 -->
+    <div class="stats" id="stats">
+        <div class="stat-card"><div class="num" id="s-kv">-</div><div class="label">键值对</div></div>
+        <div class="stat-card"><div class="num" id="s-notes">-</div><div class="label">笔记</div></div>
+        <div class="stat-card"><div class="num" id="s-files">-</div><div class="label">文件</div></div>
+    </div>
+
+    <!-- Tab 切换 -->
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('kv')">🔑 键值存储</button>
+        <button class="tab" onclick="switchTab('notes')">📝 笔记</button>
+        <button class="tab" onclick="switchTab('files')">📁 文件</button>
+    </div>
+
+    <!-- 错误提示 -->
+    <div id="error" class="error" style="display:none"></div>
+
+    <!-- KV 面板 -->
+    <div id="panel-kv" class="panel active">
+        <div class="add-section">
+            <input id="kv-key" placeholder="键名 (key)" style="flex:0 0 200px">
+            <input id="kv-val" placeholder="值 (value)">
+            <button class="btn" onclick="addKV()">存</button>
+        </div>
+        <input class="search-bar" id="kv-search" placeholder="搜索键名..." oninput="filterKV()">
+        <div class="kv-grid" id="kv-list"></div>
+    </div>
+
+    <!-- 笔记面板 -->
+    <div id="panel-notes" class="panel">
+        <div class="add-section" style="flex-direction:column">
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <input id="note-title" placeholder="标题" style="flex:1">
+                <input id="note-tags" placeholder="标签,逗号分隔" style="flex:0 0 200px">
+                <button class="btn" onclick="addNote()">存笔记</button>
+            </div>
+            <textarea id="note-content" placeholder="正文内容..." style="margin-top:8px"></textarea>
+        </div>
+        <input class="search-bar" id="note-search" placeholder="搜索笔记..." oninput="filterNotes()">
+        <div class="note-list" id="note-list"></div>
+    </div>
+
+    <!-- 文件面板 -->
+    <div id="panel-files" class="panel">
+        <div class="file-grid" id="file-list"></div>
+    </div>
+</div>
+
+<script>
+const API = 'http://localhost:8888';
+
+async function fetchAPI(path, method='GET', body=null) {
+    const opts = { method, headers: {'Content-Type':'application/json'} };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(API + path, opts);
+    if (!r.ok) throw new Error(await r.text());
+    return await r.json();
+}
+
+function showError(msg) {
+    const el = document.getElementById('error');
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 3000);
+}
+
+// ====== 初始化 ======
+async function init() {
+    try {
+        const s = await fetchAPI('/status');
+        document.getElementById('status').textContent = '✅ 在线';
+        document.getElementById('status').style.background = 'rgba(46,204,113,0.3)';
+        document.getElementById('s-kv').textContent = s.data.kv_count;
+        document.getElementById('s-notes').textContent = s.data.note_count;
+        document.getElementById('s-files').textContent = s.data.file_count;
+    } catch(e) {
+        document.getElementById('status').textContent = '❌ 离线';
+        document.getElementById('status').style.background = 'rgba(231,76,60,0.3)';
+        showError('无法连接云存储服务，请确保 tg_api_server.py 正在运行');
+    }
+    loadKV();
+    loadNotes();
+    loadFiles();
+}
+
+// ====== Tab 切换 ======
+function switchTab(name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tab[onclick="switchTab('${name}')"]`).classList.add('active');
+    document.getElementById(`panel-${name}`).classList.add('active');
+}
+
+// ====== KV 操作 ======
+async function loadKV() {
+    try {
+        const notes = await fetchAPI('/notes');
+        // KV 通过 notes 查不到，直接从 /kv 端点取
+        // 这里简化：通过已知键名读取
+        const list = document.getElementById('kv-list');
+        list.innerHTML = '<div class="loading">键值数据加载中...</div>';
+        // 尝试读几个常用键
+        const keys = ['run_count', 'last_run'];
+        let html = '';
+        for (const key of keys) {
+            try {
+                const r = await fetchAPI('/kv/' + key);
+                html += renderKVCard(r.data);
+            } catch(e) {}
+        }
+        list.innerHTML = html || '<div class="loading">暂无键值数据</div>';
+    } catch(e) {
+        document.getElementById('kv-list').innerHTML = '<div class="error">加载失败</div>';
+    }
+}
+
+function renderKVCard(data) {
+    const val = typeof data.value === 'object' ? JSON.stringify(data.value, null, 2) : data.value;
+    const time = data.value?.updated_at || '';
+    return `
+    <div class="kv-card">
+        <button class="del-btn" onclick="delKV('${data.key}')">×</button>
+        <div class="key">🔑 ${data.key}</div>
+        <div class="value">${escHtml(val)}</div>
+        ${time ? `<div class="time">${time}</div>` : ''}
+    </div>`;
+}
+
+async function addKV() {
+    const key = document.getElementById('kv-key').value.trim();
+    const val = document.getElementById('kv-val').value.trim();
+    if (!key) return showError('请输入键名');
+    try {
+        await fetchAPI('/kv', 'POST', { key, value: val });
+        document.getElementById('kv-key').value = '';
+        document.getElementById('kv-val').value = '';
+        loadKV();
+    } catch(e) {
+        showError('存储失败');
+    }
+}
+
+async function delKV(key) {
+    if (!confirm(`删除键 "${key}"？`)) return;
+    try {
+        await fetchAPI('/kv/' + key, 'DELETE');
+        loadKV();
+    } catch(e) {
+        showError('删除失败');
+    }
+}
+
+function filterKV() {
+    const q = document.getElementById('kv-search').value;
+    document.querySelectorAll('#kv-list .kv-card').forEach(card => {
+        const key = card.querySelector('.key').textContent;
+        card.style.display = key.includes(q) ? '' : 'none';
+    });
+}
+
+// ====== 笔记操作 ======
+async function loadNotes() {
+    try {
+        const r = await fetchAPI('/notes');
+        const notes = r.data || [];
+        const list = document.getElementById('note-list');
+        if (notes.length === 0) {
+            list.innerHTML = '<div class="loading">暂无笔记</div>';
+            return;
+        }
+        list.innerHTML = notes.reverse().map(n => renderNoteCard(n)).join('');
+    } catch(e) {
+        document.getElementById('note-list').innerHTML = '<div class="error">加载失败</div>';
+    }
+}
+
+function renderNoteCard(n) {
+    const tags = (n.tags || []).map(t => `<span class="tag">#${t}</span>`).join('');
+    return `
+    <div class="note-card">
+        <div class="title">${escHtml(n.title || '无标题')}</div>
+        <div class="content">${escHtml(n.content)}</div>
+        ${tags ? `<div class="tags">${tags}</div>` : ''}
+        <div class="meta">
+            <span>${n.saved_at || ''}</span>
+            <button class="del-btn" onclick="delNote(${n.id})">删除</button>
+        </div>
+    </div>`;
+}
+
+async function addNote() {
+    const title = document.getElementById('note-title').value.trim();
+    const content = document.getElementById('note-content').value.trim();
+    const tagsStr = document.getElementById('note-tags').value.trim();
+    if (!content) return showError('请输入内容');
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+    try {
+        await fetchAPI('/note', 'POST', { title, content, tags });
+        document.getElementById('note-title').value = '';
+        document.getElementById('note-content').value = '';
+        document.getElementById('note-tags').value = '';
+        loadNotes();
+    } catch(e) {
+        showError('保存失败');
+    }
+}
+
+async function delNote(id) {
+    if (!confirm('删除这条笔记？')) return;
+    try {
+        await fetchAPI('/note/' + id, 'DELETE');
+        loadNotes();
+    } catch(e) {
+        showError('删除失败');
+    }
+}
+
+function filterNotes() {
+    const q = document.getElementById('note-search').value.toLowerCase();
+    document.querySelectorAll('#note-list .note-card').forEach(card => {
+        const text = card.textContent.toLowerCase();
+        card.style.display = text.includes(q) ? '' : 'none';
+    });
+}
+
+// ====== 文件操作 ======
+async function loadFiles() {
+    try {
+        const r = await fetchAPI('/files');
+        const files = r.data || [];
+        const list = document.getElementById('file-list');
+        if (files.length === 0) {
+            list.innerHTML = '<div class="loading">暂无文件</div>';
+            return;
+        }
+        list.innerHTML = files.reverse().map(f => renderFileCard(f)).join('');
+    } catch(e) {
+        document.getElementById('file-list').innerHTML = '<div class="error">加载失败</div>';
+    }
+}
+
+function renderFileCard(f) {
+    const tags = (f.tags || []).map(t => `<span class="tag">#${t}</span>`).join('');
+    const size = f.size ? fmtSize(f.size) : '';
+    return `
+    <div class="file-card">
+        <div class="name">📄 ${escHtml(f.filename)}</div>
+        <div class="info">${size} · ${f.uploaded_at || ''}</div>
+        ${f.description ? `<div class="desc">${escHtml(f.description)}</div>` : ''}
+        ${tags ? `<div class="tags" style="margin-top:6px">${tags}</div>` : ''}
+    </div>`;
+}
+
+// ====== 工具 ======
+function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + 'B';
+    if (bytes < 1048576) return (bytes/1024).toFixed(1) + 'KB';
+    return (bytes/1048576).toFixed(1) + 'MB';
+}
+
+// ====== 启动 ======
+init();
+</script>
+</body>
+</html>

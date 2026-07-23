@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@imgly/background-removal": "^1.7.0",
+    "@types/node": "^25.7.0",
+    "edge-tts": "^1.0.1",
+    "node-fetch": "^3.3.2",
+    "sharp": "^0.34.5",
+    "ws": "^8.20.1"
+  }
+}

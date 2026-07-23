@@ -21,4 +21,5 @@ ENV PORT=8080
 EXPOSE 8080
 
 # 启动服务
-CMD ["python", "railway_file_server.py"]
+# Debug: force unbuffered output to see Python errors
+CMD ["python", "-u", "railway_file_server.py"]

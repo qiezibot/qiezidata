@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><body>
+<script>
+(async function(){
+  // Load image from local server via Image (not fetch)
+  var img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function(){
+    var c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    c.toBlob(function(b){
+      var f = new File([b], 'cover_zidi.jpg', {type: 'image/jpeg'});
+      var dt = new DataTransfer();
+      dt.items.add(f);
+      var i = document.querySelector('input[type="file"][accept*="image"]');
+      if(!i){ document.body.textContent = 'NO INPUT'; return; }
+      var s = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'files').set;
+      s.call(i, dt.files);
+      i.dispatchEvent(new Event('change', {bubbles: true}));
+      document.body.textContent = 'UPLOADED ' + f.size;
+    }, 'image/jpeg', 0.95);
+  };
+  img.onerror = function(){ document.body.textContent = 'IMG ERROR'; };
+  img.src = 'http://127.0.0.1:18888/cover_zidi.jpg';
+})();
+</script></body></html>

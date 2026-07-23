@@ -1,0 +1,1 @@
+{"query":"query GetDeployments { deployments(input: {serviceId: \"fbd72bbc-4a0e-4727-88a3-3026109f2846\"}) { edges { node { id status createdAt meta url } } } }"}
