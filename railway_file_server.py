@@ -2599,6 +2599,18 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
+
+
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:9999;justify-content:center;align-items:center}
+.modal-content{background:#fff;border-radius:12px;padding:24px 28px;max-width:380px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);animation:modalIn .25s ease}
+.modal-close{float:right;font-size:22px;cursor:pointer;color:#999;line-height:1}.modal-close:hover{color:#333}
+.modal h3{margin:0 0 12px;font-size:16px;color:#333}
+.modal h4{margin:12px 0 8px;font-size:14px;color:#555}
+.modal .btn{background:linear-gradient(135deg,#7c5cfc,#5a3fd6);color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;width:auto;margin-top:4px}
+.modal .btn:hover{background:linear-gradient(135deg,#8b6dff,#6b51e6)}
+.modal .msg{font-size:12px;padding:6px 10px;margin-top:8px}
+@keyframes modalIn{from{opacity:0;transform:scale(.92) translateY(-10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
 </style></head><body>
 <!-- 个人资料弹窗 -->
 <div id="profileModal" class="modal" style="display:none"><div class="modal-content" style="max-width:420px"><span class="modal-close" onclick="closeProfile()">&times;</span><h3>个人资料</h3><div class="form-group"><label>用户名</label><input id="profModalUser" type="text" readonly style="background:#f5f5f5;cursor:not-allowed"></div><div class="form-group"><label>显示名称</label><input id="profModalDN" type="text" placeholder="输入显示名称"></div><div class="form-group"><label>角色</label><input id="profModalRole" type="text" readonly style="background:#f5f5f5;cursor:not-allowed"></div><button class="btn" onclick="saveProfileModal()">保存</button><div id="profModalSaveMsg" class="msg" style="display:none"></div><hr style="margin:16px 0"><h4>修改密码</h4><div class="form-group"><label>旧密码</label><input id="profModalOldPwd" type="password" placeholder="输入旧密码"></div><div class="form-group"><label>新密码</label><input id="profModalNewPwd" type="password" placeholder="至少4个字符"></div><div class="form-group"><label>确认新密码</label><input id="profModalNewPwd2" type="password" placeholder="再次输入"></div><button class="btn" onclick="submitProfilePwdModal()">修改密码</button><div id="profModalPwdMsg" class="msg" style="display:none"></div></div></div>
