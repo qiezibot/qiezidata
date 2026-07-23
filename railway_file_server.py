@@ -1054,7 +1054,7 @@ async def get_me(request: Request):
 
 
 
-    if not user: raise HTTPException(status_code=404)
+    if not admin_user: raise HTTPException(status_code=404)
 
 
 
@@ -1091,7 +1091,7 @@ async def change_my_password(request: Request):
 @app.post('/admin/user/{uid}/change_password')
 async def admin_change_user_password(uid: int, request: Request):
     aid = _require(request)
-    user = await _user(aid)
+    admin_user = await _user(aid)
     if not admin_user or admin_user.get('role') != 'admin':
         raise HTTPException(status_code=403)
     data = await request.json()
