@@ -1,0 +1,7 @@
+[2026-05-16 11:29:10] [INFO] [DIAG] Python路径: C:\Program Files\Python311\python.exe
+[2026-05-16 11:29:10] [INFO] [DIAG] Vosk模型: C:\vosk-model-small-cn-0.22 (STT正常)
+[2026-05-16 11:29:10] [INFO] [DIAG] edge-tts: 正常 (zh-CN-XiaoxiaoNeural)
+[2026-05-16 11:29:10] [INFO] [DIAG] ffmpeg: C:\temp\ffmpeg.exe (已安装)
+[2026-05-16 11:29:10] [INFO] [DIAG] pysilk: 正常
+[2026-05-16 11:29:10] [INFO] [DIAG] voice_pipeline.py: TTS→WAV→Silk 一站式脚本已创建
+[2026-05-16 11:29:10] [INFO] [DIAG] voice_pipeline.py 测试通过: 语音生成成功

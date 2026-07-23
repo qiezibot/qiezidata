@@ -1,0 +1,10 @@
+[
+  {
+    "original": "test_pipeline_input.png",
+    "input_path": "C:\\temp\\test_pipeline_input.png",
+    "output_paths": [
+      "C:\\temp\\comfy_results\\skin_6e09429b.png"
+    ],
+    "timestamp": 1779358086.9440632
+  }
+]

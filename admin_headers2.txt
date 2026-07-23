@@ -1,0 +1,22 @@
+HTTP/1.1 302 Found
+Date: Wed, 22 Jul 2026 07:23:46 GMT
+location: /
+Server: railway-hikari
+Set-Cookie: eggplant_token=1:f834ffc0975e7a81; HttpOnly; Max-Age=604800; Path=/; SameSite=lax
+x-railway-request-id: AoSOukizSaO7TTzXLPU1MQ
+Content-Length: 0
+x-hikari-trace: sjc1.hqvw
+x-railway-edge: sjc1
+Connection: keep-alive
+
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Date: Wed, 22 Jul 2026 07:23:46 GMT
+Server: railway-hikari
+x-railway-request-id: VugmBXD1Q92l-UBUljLL4A
+Content-Length: 48203
+x-hikari-trace: sjc1.hqvw
+x-railway-edge: sjc1
+vary: accept-encoding
+Connection: keep-alive
+

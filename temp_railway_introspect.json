@@ -1,0 +1,1 @@
+{"query":"query Introspect { inputType: __type(name: \"DeploymentListInput\") { inputFields { name type { name kind } } } deploymentType: __type(name: \"Deployment\") { fields { name type { name kind } } } }"}

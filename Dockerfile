@@ -16,8 +16,10 @@ RUN mkdir -p /data/uploads
 # 环境变量
 ENV UPLOAD_DIR=/data/uploads
 ENV HOST=0.0.0.0
-ENV PORT=8000
+ENV PORT=8080
 
-EXPOSE 8000
+EXPOSE 8080
 
-CMD ["python", "railway_file_server.py"]
+# 启动服务
+# Debug: force unbuffered output to see Python errors
+CMD ["python", "-u", "railway_file_server.py"]

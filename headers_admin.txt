@@ -1,0 +1,11 @@
+HTTP/1.1 302 Found
+Date: Tue, 21 Jul 2026 23:58:44 GMT
+location: /
+Server: railway-hikari
+Set-Cookie: eggplant_token=1:fea167df196e7e0c; HttpOnly; Max-Age=604800; Path=/; SameSite=lax
+x-railway-request-id: 2I3mUL4fTAeB9IxF0_TJvA
+Content-Length: 0
+x-hikari-trace: hnd1.4cm0
+x-railway-edge: hnd1
+Connection: keep-alive
+
