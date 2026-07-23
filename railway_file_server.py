@@ -1979,7 +1979,7 @@ async def admin_delete_user(uid: int, request: Request):
 
 
 
-    aid = _require(request); user = await _user(aid)
+    aid = _require(request); admin_user = await _user(aid)
 
 
 
