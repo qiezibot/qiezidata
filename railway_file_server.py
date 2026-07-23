@@ -22,7 +22,7 @@ Multi-user + Admin Dashboard + File Management
 import os, uuid, mimetypes, sqlite3, secrets, hashlib
 from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request, Body
 from fastapi.responses import FileResponse, PlainTextResponse, HTMLResponse, RedirectResponse, Response, Response, Response
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
@@ -124,6 +124,32 @@ async def init_db():
         if not cols:
             conn.execute('CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, filename TEXT NOT NULL, original_name TEXT NOT NULL, size INTEGER NOT NULL, mime_type TEXT, upload_time TEXT NOT NULL, file_path TEXT NOT NULL)')
         conn.commit(); conn.close()
+
+
+@app.post('/admin/user/{uid}/set_id')
+async def set_user_id(uid: int, new_id: int = Body(...), request: Request = None):
+    if not request:
+        return JSONResponse({'ok': False, 'detail': '无权限'}, status_code=403)
+    admin_uid = request.state.user_id
+    async with db_pool.acquire() as conn:
+        # Check if admin
+        row = await conn.fetchrow('SELECT role FROM users WHERE id=$1', admin_uid)
+        if not row or row['role'] != 'admin':
+            return JSONResponse({'ok': False, 'detail': '无权限'}, status_code=403)
+        # Check target user exists
+        target = await conn.fetchrow('SELECT id, username FROM users WHERE id=$1', uid)
+        if not target:
+            return JSONResponse({'ok': False, 'detail': '用户不存在'}, status_code=404)
+        # Check new_id not taken
+        conflict = await conn.fetchrow('SELECT id FROM users WHERE id=$1', new_id)
+        if conflict:
+            return JSONResponse({'ok': False, 'detail': f'ID {new_id} 已被占用'}, status_code=400)
+        # Update ID
+        await conn.execute('UPDATE users SET id=$1 WHERE id=$2', new_id, uid)
+        # Also update files table
+        await conn.execute('UPDATE files SET user_id=$1 WHERE user_id=$2', new_id, uid)
+        return JSONResponse({'ok': True, 'msg': f'用户ID {uid} 已改为 {new_id}'})
+
 
 @app.on_event('startup')
 async def startup(): await init_db()
@@ -413,6 +439,23 @@ async def admin_users(request: Request):
     rows = await db_fetch('SELECT id,username,display_name,role,created_at FROM users ORDER BY id' if not use_pg else 'SELECT id,username,display_name,role,created_at FROM users ORDER BY id')
     return [dict(r) for r in rows]
 
+@app.delete('/admin/user/{uid}')
+async def admin_delete_user(uid: int, request: Request):
+    aid = _require(request); user = await _user(aid)
+    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if uid == aid: raise HTTPException(status_code=400, detail='不能删除自己')
+    target = await _user(uid)
+    if not target: raise HTTPException(status_code=404, detail='用户不存在')
+    # 删除该用户的文件
+    rows = await db_fetch('SELECT file_path FROM files WHERE user_id=$1' if use_pg else 'SELECT file_path FROM files WHERE user_id=?', uid)
+    for row in rows:
+        fp = row['file_path']
+        if os.path.exists(fp): os.remove(fp)
+    await db_execute('DELETE FROM files WHERE user_id=$1' if use_pg else 'DELETE FROM files WHERE user_id=?', uid)
+    # 删除用户
+    await db_execute('DELETE FROM users WHERE id=$1' if use_pg else 'DELETE FROM users WHERE id=?', uid)
+    return {'ok': True, 'msg': f'用户 {target["username"]} 已删除'}
+
 @app.get('/admin/files')
 async def admin_files(request: Request):
     uid = _require(request); user = await _user(uid)
@@ -579,7 +622,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <div class="card"><h2>我的文件</h2><div id="myFileList"><p style="color:#999;text-align:center;padding:20px">暂无文件</p></div></div>
 </div>
 <div class="tab-page" id="page-users">
-<div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
+<div class="card"><h2>用户列表</h2><table class="user-table"><thead><tr><th>ID</th><th>用户名</th><th>显示名称</th><th>角色</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="userTableBody"></tbody></table></div>
 </div>
 <div class="tab-page" id="page-clouddata">
 <div class="card" style="background:#edf7ec;padding:10px">
@@ -647,13 +690,15 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 <div id="toast" class="toast"></div>
 
 <script>
+/* v3 */
 function switchPage(id,el){document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active')});el.classList.add('active');document.querySelectorAll('.tab-page').forEach(function(p){p.classList.remove('active')});document.getElementById('page-'+id).classList.add('active');if(id==='dashboard')loadDashboard();if(id==='files')loadAllFiles();if(id==='upload')loadMyFiles();if(id==='users')loadUsers();if(id==='clouddata')initCloudData()}
 document.getElementById('dropZone').addEventListener('click',function(){document.getElementById('fileInput').click()});document.getElementById('fileInput').addEventListener('change',function(){if(this.files.length)uploadFile(this.files[0])});
 async function uploadFile(file){var fd=new FormData();fd.append('file',file);document.getElementById('uploadProgress').style.display='block';try{var xhr=new XMLHttpRequest();await new Promise(function(resolve,reject){xhr.onload=function(){if(xhr.status===200)resolve();else if(xhr.status===401)window.location.href='/';else reject()};xhr.open('POST','/upload');xhr.withCredentials=true;xhr.send(fd)});showToast('上传成功','success');loadMyFiles()}catch(e){showToast('上传失败','error')}document.getElementById('uploadProgress').style.display='none'}
 async function loadDashboard(){try{var r=await fetch('/admin/stats',{credentials:'include'});if(r.status===401){window.location.href='/';return}var d=await r.json();document.getElementById('statUsers').textContent=d.users;document.getElementById('statFiles').textContent=d.files;document.getElementById('statSize').textContent=d.size_display;document.getElementById('statAdmin').textContent=d.admins}catch(e){}}
 async function loadAllFiles(){try{var r=await fetch('/admin/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('fileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B | '+f.owner+'</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a></div></li>'}h+='</ul>';document.getElementById('fileList').innerHTML=h}catch(e){}}
-async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
-async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">删除</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
+async function loadUsers(){try{var r=await fetch('/admin/users',{credentials:'include'});if(r.status===401){window.location.href='/';return}var users=await r.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'-':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">删除</button>')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}catch(e){}}
+document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.del-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));var uname=btn.getAttribute('data-uname');if(confirm('确定要删除用户 '+uname+' 吗?此操作不可恢复!'))deleteUser(uid)})
+async function deleteUser(uid){try{var r=await fetch('/admin/user/'+uid,{method:'DELETE',credentials:'include'});if(r.ok){var r2=await fetch('/admin/users',{credentials:'include'});if(r2.status===401){window.location.href='/';return}var users=await r2.json();var h='';for(var i=0;i<users.length;i++){var u=users[i];h+='<tr><td>'+u.id+'</td><td>'+u.username+'</td><td>'+(u.display_name||'-')+'</td><td>'+u.role+'</td><td>'+(u.created_at||'')+'</td>'+'<td>'+(u.role==='admin'?'-':'<button data-uid="'+u.id+'" data-uname="'+u.username+'" class="del-btn">删除</button>')+'</td></tr>'}document.getElementById('userTableBody').innerHTML=h}else{var e=await r.json();alert(e.detail||'删除失败')}}catch(e){alert('删除失败')}}async function loadMyFiles(){try{var r=await fetch('/files',{credentials:'include'});if(r.status===401){window.location.href='/';return}var files=await r.json();if(!files.length){document.getElementById('myFileList').innerHTML='<p style=\"color:#999;text-align:center;padding:20px\">暂无文件</p>';return}var h='<ul class=\"file-list\">';for(var i=0;i<files.length;i++){var f=files[i];h+='<li class=\"file-item\"><div class=\"file-info\"><div class=\"file-name\">'+f.original_name+'</div><div class=\"file-meta\">'+f.size+'B</div></div><div class=\"file-actions\"><a href=\"/download/'+f.id+'\" download>下载</a><button class=\"del-btn\" onclick=\"delFile('+f.id+')\">删除</button></div></li>'}h+='</ul>';document.getElementById('myFileList').innerHTML=h}catch(e){}}
 async function delFile(id){if(!confirm('确定删除？'))return;try{var r=await fetch('/delete/'+id,{method:'DELETE',credentials:'include'});if(r.ok){showToast('删除成功','success');loadMyFiles()}else if(r.status===401)window.location.href='/'}catch(e){}}
 
 async function exportCD(mode){var pid=document.getElementById('cdpSelect').value;var m={all:'全部',read:'已读取',unread:'未读取'};if(!confirm('确定导出'+m[mode]+'?'))return;window.open('/admin/cddata/export/'+pid+'/'+mode)}
@@ -663,7 +708,7 @@ async function exportCD(mode){var pid=document.getElementById('cdpSelect').value
 
 function loadCloudDataProjects(){fetch('/admin/cdprojects',{credentials:'include'}).then(function(r){return r.json()}).then(function(ps){window.cdProjects=ps;var sel=document.getElementById('cdpSelect');if(!sel)return;sel.innerHTML='';for(var i=0;i<ps.length;i++){var o=document.createElement('option');o.value=ps[i].id;o.text='ID:'+ps[i].id+' '+ps[i].name;sel.appendChild(o)}var p=ps[0];if(p){document.getElementById('cdpTableBody').innerHTML='<tr><td>'+p.id+'</td><td>'+p.name+'</td><td id=\"cdpToken_'+p.id+'\">'+p.token+'</td><td>'+(p.t||'')+'</td><td><button onclick=\"resetToken('+p.id+')\" class=\"mybtn btn btn-danger\">重置TOKEN</button></td></tr>';loadCloudDataStats(p.id);loadCloudDataList(p.id,1)}})}
 function loadCloudDataStats(pid){fetch('/admin/cdprojects/stats/'+pid,{credentials:'include'}).then(function(r){return r.json()}).then(function(s){document.getElementById('cdTotal').textContent=s.total;document.getElementById('cdNoRead').textContent=s.noRead;document.getElementById('cdRead').textContent=s.read})}
-function loadCloudDataList(pid,page){var q=document.getElementById('cdQueryType').value;var s=document.getElementById('cdSearchText').value;var u='/admin/cddata/'+pid+'?page='+page+'&limit=20&queryType='+q+(s?'&search='+encodeURIComponent(s):'');fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){var tb=document.getElementById('cdDataBody');if(!tb)return;tb.innerHTML='';for(var i=0;i<d.items.length;i++){var x=d.items[i];var st=x.read?'已读取':'未读取';var sc=st==='已读取'?'green':'orange';var btnT=x.read?'修改为未读取':'修改为已读取';tb.innerHTML+='<tr><td>'+x.id+'</td><td>'+x.name+'</td><td><a href=\"#\" onclick=\"downloadCD('+x.id+');return false\">(点击下载)</a></td><td>'+x.md5+'</td><td>'+(x.t||'')+'</td><td><span style=\"color:'+sc+'\">'+st+'</span></td><td><button onclick=\"toggleCDState('+x.id+')\" class=\"mybtn btn btn-danger\">'+btnT+'</button> <button onclick=\"if(confirm('确定删除?'))deleteCD('+x.id+')\" class=\"mybtn btn btn-danger\">删除数据</button></td></tr>'}window.cdPage=page;window.cdTotal=d.total;var pn=Math.ceil(d.total/20)||1;var ph='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+',1);return false\">首页</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.max(1,page-1)+');return false\">上一页</a></li>';for(var i=1;i<=pn;i++){ph+='<li class=\"'+(i===page?'active':'')+'\"><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+i+');return false\">'+i+'</a></li>'}ph+='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.min(pn,page+1)+');return false\">下一页</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+pn+');return false\">尾页</a></li>';document.getElementById('cdPagination').innerHTML=ph})}
+function loadCloudDataList(pid,page){var q=document.getElementById('cdQueryType').value;var s=document.getElementById('cdSearchText').value;var u='/admin/cddata/'+pid+'?page='+page+'&limit=20&queryType='+q+(s?'&search='+encodeURIComponent(s):'');fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(d){var tb=document.getElementById('cdDataBody');if(!tb)return;tb.innerHTML='';for(var i=0;i<d.items.length;i++){var x=d.items[i];var st=x.read?'已读取':'未读取';var sc=st==='已读取'?'green':'orange';var btnT=x.read?'修改为未读取':'修改为已读取';tb.innerHTML+='<tr><td>'+x.id+'</td><td>'+x.name+'</td><td><a href=\"#\" onclick=\"downloadCD('+x.id+');return false\">(点击下载)</a></td><td>'+x.md5+'</td><td>'+(x.t||'')+'</td><td><span style=\"color:'+sc+'\">'+st+'</span></td><td><button onclick=\"toggleCDState('+x.id+')\" class=\"mybtn btn btn-danger\">'+btnT+'</button> <button onclick=\"if(confirm("确定删除?"))deleteCD('+x.id+')\" class=\"mybtn btn btn-danger\">删除数据</button></td></tr>'}window.cdPage=page;window.cdTotal=d.total;var pn=Math.ceil(d.total/20)||1;var ph='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+',1);return false\">首页</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.max(1,page-1)+');return false\">上一页</a></li>';for(var i=1;i<=pn;i++){ph+='<li class=\"'+(i===page?'active':'')+'\"><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+i+');return false\">'+i+'</a></li>'}ph+='<li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+Math.min(pn,page+1)+');return false\">下一页</a></li><li><a href=\"#\" onclick=\"loadCloudDataList('+pid+','+pn+');return false\">尾页</a></li>';document.getElementById('cdPagination').innerHTML=ph})}
 function toggleCDState(cid){fetch('/admin/cddata/state/'+cid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){var pid=document.getElementById('cdpSelect').value;loadCloudDataList(pid,window.cdPage||1);loadCloudDataStats(pid)}})}
 function deleteCD(cid){var pid=document.getElementById('cdpSelect').value;fetch('/admin/cddata/'+cid,{method:'DELETE',credentials:'include'}).then(function(){loadCloudDataList(pid,window.cdPage||1);loadCloudDataStats(pid)})}
 function resetToken(pid){if(!confirm('重置后旧Token失效，确定重置吗?'))return;fetch('/admin/cdprojects/resettoken/'+pid,{method:'POST',credentials:'include'}).then(function(r){return r.json()}).then(function(d){if(d.ok){document.getElementById('cdpToken_'+pid).textContent=d.token;showToast('重置成功','success')}})}
@@ -870,3 +915,5 @@ if __name__ == '__main__':
 
 
 # deploy 07/21/2026 03:27:38
+
+# deploy trigger 
