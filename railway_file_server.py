@@ -1008,7 +1008,7 @@ async def get_me(request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
@@ -1050,7 +1050,7 @@ async def change_my_password(request: Request):
 async def admin_change_user_password(uid: int, request: Request):
     aid = _require(request)
     user = await _user(aid)
-    if not user or user.get('role') != 'admin':
+    if not admin_user or admin_user.get('role') != 'admin':
         raise HTTPException(status_code=403)
     data = await request.json()
     new_pw = data.get('new_password', '')
@@ -1649,11 +1649,11 @@ async def admin_delete_file(request: Request, fid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin':
+    if not admin_user or admin_user.get('role') != 'admin':
 
 
 
@@ -1701,11 +1701,11 @@ async def clouddata_list(request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -1737,11 +1737,11 @@ async def clouddata_add(request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -1825,11 +1825,11 @@ async def clouddata_del(cid: int, request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -1865,11 +1865,11 @@ async def admin_stats(request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -1909,11 +1909,11 @@ async def admin_users(request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -1941,7 +1941,7 @@ async def admin_delete_user(uid: int, request: Request):
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -2005,11 +2005,11 @@ async def admin_files(request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -3218,7 +3218,6 @@ document.getElementById('userTableBody').addEventListener('click',function(e){va
 document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.set-admin-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));var uname=btn.getAttribute('data-uname');if(confirm('确定将用户 '+uname+' 设为管理员吗?')){fetch('/admin/user/'+uid+'/set_admin',{method:'POST',credentials:'include'}).then(function(r){if(r.ok){alert('已设为管理员');loadUsers()}else{r.json().then(function(d){alert(d.detail||'设置失败')})}}).catch(function(){alert('请求失败')})}})
 
 
-
 document.getElementById('userTableBody').addEventListener('click',function(e){var btn=e.target.closest('.cpw-btn');if(!btn)return;var uid=parseInt(btn.getAttribute('data-uid'));adminChangePwd(uid)})
 
 
@@ -3319,7 +3318,6 @@ document.addEventListener('DOMContentLoaded',initCloudData);
 
 
 
-</script>
 
 function openProfile(){ document.getElementById('profileModal').style.display='flex'; fetch('/me',{credentials:'include'}).then(function(r){return r.json();}).then(function(u){ document.getElementById('profModalUser').value=u.username||''; document.getElementById('profModalDN').value=u.display_name||''; document.getElementById('profModalRole').value=u.role||''; }).catch(function(){}); }
 function closeProfile(){ document.getElementById('profileModal').style.display='none'; }
@@ -3332,10 +3330,14 @@ function submitAdminChangePwd(){ var newP=document.getElementById('cpNewPwd').va
 
 
 
-<div id="role-indicator" data-role="<!--R-->" style="display:none"></div>
+<div id="role-indicator" data-role="
+</script>
+
+
+
+<!--R-->" style="display:none"></div>
 <script>
 (function(){var e=document.getElementById("role-indicator");var r=e?e.dataset.role:"";if(r!="admin"){document.querySelectorAll('[onclick*="dashboard"],[onclick*="users"]').forEach(function(n){n.style.display="none"});}})();
-</script>
 
 function openProfile(){ document.getElementById('profileModal').style.display='flex'; fetch('/me',{credentials:'include'}).then(function(r){return r.json();}).then(function(u){ document.getElementById('profModalUser').value=u.username||''; document.getElementById('profModalDN').value=u.display_name||''; document.getElementById('profModalRole').value=u.role||''; }).catch(function(){}); }
 function closeProfile(){ document.getElementById('profileModal').style.display='none'; }
@@ -3344,6 +3346,8 @@ function submitProfilePwdModal(){ var oldP=document.getElementById('profModalOld
 var _cpUid=0;
 function adminChangePwd(uid){ _cpUid=uid; document.getElementById('changePasswordModal').style.display='flex'; document.getElementById('cpUserInfo').textContent='用户ID: '+uid; document.getElementById('cpNewPwd').value=''; document.getElementById('cpMsg').style.display='none'; }
 function submitAdminChangePwd(){ var newP=document.getElementById('cpNewPwd').value; var msg=document.getElementById('cpMsg'); msg.style.display='none'; if(newP.length<4){msg.textContent='新密码至少4个字符';msg.style.display='block';return;} fetch('/admin/user/'+_cpUid+'/change_password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_password:newP})}).then(function(r){return r.json();}).then(function(d){if(d.ok){msg.textContent='密码已修改';msg.style.color='#27ae60';setTimeout(function(){document.getElementById('changePasswordModal').style.display='none';},1500);}else{msg.textContent=d.detail||'修改失败';msg.style.color='#e74c3c';}msg.style.display='block';}).catch(function(){msg.textContent='请求失败';msg.style.color='#e74c3c';msg.style.display='block';}); }
+</script>
+
 
 
 <!-- 个人资料弹窗 -->
@@ -3387,11 +3391,11 @@ async def cdprojects_list(request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -3427,11 +3431,11 @@ async def cdprojects_create(request: Request):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -3479,11 +3483,11 @@ async def cdprojects_delete(request: Request, pid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -3523,11 +3527,11 @@ async def cdprojects_reset_token(request: Request, pid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -3571,11 +3575,11 @@ async def cdprojects_reset_all_read(request: Request, pid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -3611,11 +3615,11 @@ async def cdprojects_stats(request: Request, pid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -3919,11 +3923,11 @@ async def cddata_list(request: Request, pid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -4027,11 +4031,11 @@ async def cddata_toggle_state(request: Request, cid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -4087,11 +4091,11 @@ async def cddata_delete(request: Request, cid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -4115,11 +4119,11 @@ async def cddata_batch_delete(request: Request, pid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -4167,11 +4171,11 @@ async def cddata_export(request: Request, pid: int, mode: str):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
@@ -4275,11 +4279,11 @@ async def cddata_download(request: Request, cid: int):
 
 
 
-    uid = _require(request); user = await _user(uid)
+    admin_id = _require(request); admin_user = await _user(admin_id)
 
 
 
-    if not user or user.get('role') != 'admin': raise HTTPException(status_code=403)
+    if not admin_user or admin_user.get('role') != 'admin': raise HTTPException(status_code=403)
 
 
 
