@@ -232,7 +232,7 @@ async def login(username: str = Form(...), password: str = Form(...)):
         return RedirectResponse(url='/?e=1', status_code=302)
     token = _token(row['id'])
     resp = RedirectResponse(url='/', status_code=302)
-    resp.set_cookie(key=AUTH_COOKIE, value=token, httponly=True, max_age=86400*7, samesite='lax')
+    resp.set_cookie(key=AUTH_COOKIE, value=token, httponly=True, max_age=86400*7, samesite='lax', secure=True)
     return resp
 
 @app.get('/logout')
