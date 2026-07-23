@@ -2207,7 +2207,7 @@ async def exc_handler(request: Request, exc: Exception):
 
 
 
-_LOGIN = """\<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据</title><style>
+_LOGIN = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>茄子数据</title><style>
 
 
 
@@ -2394,7 +2394,7 @@ function validateRegister(){var p1=document.getElementById('regPass').value;if(p
 
 
 
-_ADMIN = """\<<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理后台 - 茄子数据</title><style>
+_ADMIN = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>管理后台 - 茄子数据</title><style>
 
 
 
