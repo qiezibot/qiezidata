@@ -1068,6 +1068,22 @@ async def get_me(request: Request):
 
 
 
+
+@app.post('/me')
+async def update_me(request: Request):
+    uid = _require(request)
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({'ok': False, 'detail': '请求格式错误'})
+    dn = data.get('display_name', '')
+    if dn:
+        if use_pg:
+            await db_execute('UPDATE users SET display_name=$1 WHERE id=$2', dn, uid)
+        else:
+            await db_execute('UPDATE users SET display_name=? WHERE id=?', dn, uid)
+    return JSONResponse({'ok': True})
+
 @app.post('/me/change_password')
 async def change_my_password(request: Request):
     uid = _require(request)
@@ -2670,7 +2686,7 @@ progress{width:100%;height:6px;border-radius:3px;margin-top:10px;display:none}
 
 
 
-<div class="header"><span class="title">管理后台</span><span class="user-area">&#x1f464; <!--U--></span></div>
+<div class="header"><span class="title">管理后台</span><span class="user-area">&#x1f464; <!--U--> | <a href="javascript:void(0)" onclick="openProfileModal()">个人资料</a></span></div>
 
 
 
@@ -3398,6 +3414,8 @@ function initCloudData(){var sel=document.getElementById('cdpSelect');if(!sel)re
 
 document.addEventListener('DOMContentLoaded',initCloudData);
 function openProfile(){ document.getElementById('profileModal').style.display='flex'; fetch('/me',{credentials:'include'}).then(function(r){return r.json();}).then(function(u){ document.getElementById('profModalUser').value=u.username||''; document.getElementById('profModalDN').value=u.display_name||''; document.getElementById('profModalRole').value=u.role||''; }).catch(function(){}); }
+
+function openProfileModal(){ fetch('/me',{credentials:'include'}).then(function(r){return r.json();}).then(function(d){document.getElementById('profModalUser').value=d.username||'';document.getElementById('profModalDN').value=d.display_name||'';document.getElementById('profModalRole').value=d.role||'user';document.getElementById('profModalSaveMsg').style.display='none';document.getElementById('profModalOldPwd').value='';document.getElementById('profModalNewPwd').value='';document.getElementById('profModalNewPwd2').value='';document.getElementById('profModalPwdMsg').style.display='none';document.getElementById('profileModal').style.display='flex';}).catch(function(){alert('获取个人资料失败');}); }
 function closeProfile(){ document.getElementById('profileModal').style.display='none'; }
 function saveProfileModal(){ var dn=document.getElementById('profModalDN').value.trim(); var msg=document.getElementById('profModalSaveMsg'); msg.style.display='none'; fetch('/me',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({display_name:dn})}).then(function(r){return r.json();}).then(function(d){if(d.ok){msg.textContent='已保存';msg.style.color='#27ae60';}else{msg.textContent=d.detail||'保存失败';msg.style.color='#e74c3c';}msg.style.display='block';setTimeout(function(){msg.style.display='none';},3000);}).catch(function(){msg.textContent='请求失败';msg.style.color='#e74c3c';msg.style.display='block';}); }
 function submitProfilePwdModal(){ var oldP=document.getElementById('profModalOldPwd').value; var newP=document.getElementById('profModalNewPwd').value; var newP2=document.getElementById('profModalNewPwd2').value; var msg=document.getElementById('profModalPwdMsg'); msg.style.display='none'; if(!oldP){msg.textContent='请输入旧密码';msg.style.display='block';return;} if(newP.length<4){msg.textContent='新密码至少4个字符';msg.style.display='block';return;} if(newP!==newP2){msg.textContent='两次输入不一致';msg.style.display='block';return;} fetch('/me/change_password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_password:oldP,new_password:newP})}).then(function(r){return r.json();}).then(function(d){if(d.ok){msg.textContent='密码已修改';msg.style.color='#27ae60';document.getElementById('profModalOldPwd').value='';document.getElementById('profModalNewPwd').value='';document.getElementById('profModalNewPwd2').value='';}else{msg.textContent=d.detail||'修改失败';msg.style.color='#e74c3c';}msg.style.display='block';setTimeout(function(){msg.style.display='none';},3000);}).catch(function(){msg.textContent='请求失败';msg.style.color='#e74c3c';msg.style.display='block';}); }
